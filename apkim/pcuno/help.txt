@@ -1,0 +1,19 @@
+F1 Help | F3 Dbg_Step | F5 Tape_Dir | S-F6 PTR_Read | F9  ASC+KIM_keys
+F2 Quit | F4 Run_Nrml | F7 Tape_Set | S-F7 PUN_Punch| F10 ASC_Keys_Only
+                      | F8 Tape_Del |
+
+Main KIM-1 keystrokes: <0-F> form data or address
+Ctrl-G = Go         | Ctrl-A = Enter Addrs | + = Next
+Ctrl-R = Reset      | Ctrl-D = Enter Data  | TAB= KIM Keypad
+] [    = SST on/off | Ctrl-P = Enter PC    |      or TTY Mode
+
+Wozmon: Enter FF00 Ctrl-G, Basic: E000, ACI tape ROM: F100,
+Main other programs: FDDD (mini-asm), C000 mchess
+
+Wozmon commands:
+300           Show data  | 300.305   Show data range
+300: 4C 00 C0 Enter data | C000R    Run from $C000
+
+Save/Load tape: 
+* KIM-1: run 1800/1873, 1st enter StartL/H/EndL/H/ID# in 17F5-9 
+* Apple-1 ACI: ROM at F100, *not* C100! Use F7 first to set tape

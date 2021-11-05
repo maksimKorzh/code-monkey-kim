@@ -1,0 +1,1135 @@
+00001  ;
+00002  ; In the Kowalski 6502 simulator some of the options
+00003  ; below must be set manually.
+00004  ;
+00005  ;    .lf  vtl02ca2.lst  (set listfile in menu:
+00006  ;                        Simulator->Options->Assembler)
+00007  ;    .cr  6502
+00008      .opt  Proc6502
+00009  ;
+00010  ; to run with I/O set terminal active:
+00011  ;    Menu                     or   Key
+00012  ;    Simulator->Options->Simulator [Ctrl-E]
+00013  ;    Simulator->Assemble           [F7]
+00014  ;    Simulator->Debugger           [F6]
+00015  ;    Simulator->Run                [F5]
+00016  ;    View->Input/output            [Alt-5]
+00017  ;
+00018  ;    .tf  vtl02ca2.obj,ap1  (optional save output to
+00019  ;                             file: File->Save Code)
+00020  ;-----------------------------------------------------;
+00021  ;             VTL-2 for the 6502 (VTL02C)             ;
+00022  ;           Original Altair 680b version by           ;
+00023  ;          Frank McCoy and Gary Shannon 1977          ;
+00024  ;    2012: Adapted to the 6502 by Michael T. Barry    ;
+00025  ; Thanks to sbprojects.com for a very nice assembler! ;
+00026  ;-----------------------------------------------------;
+00027  ;        Copyright (c) 2012, Michael T. Barry
+00028  ;       Revision B (c) 2015, Michael T. Barry
+00029  ;       Revision C (c) 2015, Michael T. Barry
+00030  ;               All rights reserved.
+00031  ;
+00032  ; Redistribution and use in source and binary forms,
+00033  ;   with or without modification, are permitted,
+00034  ;   provided that the following conditions are met: 
+00035  ;
+00036  ; 1. Redistributions of source code must retain the
+00037  ;    above copyright notice, this list of conditions
+00038  ;    and the following disclaimer. 
+00039  ; 2. Redistributions in binary form must reproduce the
+00040  ;    above copyright notice, this list of conditions
+00041  ;    and the following disclaimer in the documentation
+00042  ;    and/or other materials provided with the
+00043  ;    distribution. 
+00044  ;
+00045  ; THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS
+00046  ; AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
+00047  ; WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+00048  ; IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
+00049  ; FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT
+00050  ; SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
+00051  ; FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+00052  ; EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+00053  ; NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+00054  ; SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+00055  ; INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+00056  ; LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+00057  ; OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING
+00058  ; IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
+00059  ; ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+00060  ;-----------------------------------------------------;
+00061  ; Except for the differences discussed below, VTL02 was
+00062  ;   designed to duplicate the OFFICIALLY DOCUMENTED
+00063  ;   behavior of Frank's 680b version, detailed here:
+00064  ;     http://www.altair680kit.com/manuals/Altair_
+00065  ;     680-VTL-2%20Manual-05-Beta_1-Searchable.pdf
+00066  ;   These versions ignore all syntax errors and plow
+00067  ;   through VTL-2 programs with the assumption that
+00068  ;   they are "correct", but in their own unique ways,
+00069  ;   so any claims of compatibility are null and void
+00070  ;   for VTL-2 code brave (or stupid) enough to stray
+00071  ;   from the beaten path.
+00072  ;
+00073  ; Differences between the 680b and 6502 versions:
+00074  ; * {&} and {*} are initialized on entry.
+00075  ; * Division by zero returns 65535 for the quotient and
+00076  ;     the dividend for the remainder (the original 6800
+00077  ;     version froze).
+00078  ; * The 6502 has NO 16-bit registers (other than PC)
+00079  ;     and less overall register space than the 6800,
+00080  ;     so the interpreter reserves some obscure VTL02C
+00081  ;     variables {@ $ ( ) 0 1 2 3 4 5 6 7 8 9 < > : ?}
+00082  ;     for its internal use (the 680b version used a
+00083  ;     similar tactic, but differed in the details).
+00084  ;     The deep nesting of parentheses also puts {; < =}
+00085  ;     in danger of corruption.  For example, executing
+00086  ;     the statement A=((((((((1)))))))) sets both {A}
+00087  ;     and {;} to the value 1.
+00088  ; * Users wishing to call a machine language subroutine
+00089  ;     via the system variable {>} must first set the
+00090  ;     system variable {"} to the proper address vector
+00091  ;     (for example, "=768).
+00092  ; * The x register is used to point to a simple VTL02C
+00093  ;     variable (it can't point explicitly to an array
+00094  ;     element like the 680b version because it's only
+00095  ;     8-bits).  In the comments, var[x] refers to the
+00096  ;     16-bit contents of the zero-page variable pointed
+00097  ;     to by register x (residing at addresses x, x+1).
+00098  ; * The y register is used as a pointer offset inside
+00099  ;     a VTL02C statement (easily handling the maximum
+00100  ;     statement length of about 128 bytes).  In the
+00101  ;     comments, @[y] refers to the 16-bit address
+00102  ;     formed by adding register y to the value in {@}.
+00103  ; * The structure and flow of this interpreter are
+00104  ;     similar to the 680b version, but have been
+00105  ;     reorganized in a more 6502-friendly format (the
+00106  ;     6502 has no 'bsr' instruction, so the 'stuffing'
+00107  ;     of subroutines within 128 bytes of the caller is
+00108  ;     only advantageous for conditional branches).
+00109  ; * This version is based on the original port, which
+00110  ;     was wound rather tightly, in a failed attempt to
+00111  ;     fit it into 768 bytes like the 680b version; many
+00112  ;     structured programming principles were sacrificed
+00113  ;     in that effort.  The 6502 simply requires more
+00114  ;     instructions than the 6800 does to manipulate 16-
+00115  ;     bit quantities, but the overall execution speed
+00116  ;     should be comparable due to the 6502's slightly
+00117  ;     lower average clocks/instruction ratio.  As it is
+00118  ;     now, it fits into 1KB with just a few bytes to
+00119  ;     spare, but is more feature-laden than the 680b
+00120  ;     interpreter whence it came.  Beginning with
+00121  ;     Revision C, I tried to strike a tasteful balance
+00122  ;     between execution speed and code size, but I
+00123  ;     stubbornly kept it under 1024 ROMable bytes and
+00124  ;     used only documented op-codes that were supported
+00125  ;     by the original NMOS 6502 (without the ROR bug).
+00126  ;     I may have missed a few optimizations -- further
+00127  ;     suggestions are welcome.
+00128  ; * VTL02C is my free gift (?) to the world.  It may be
+00129  ;     freely copied, shared, and/or modified by anyone
+00130  ;     interested in doing so, with only the stipulation
+00131  ;     that any liabilities arising from its use are
+00132  ;     limited to the price of VTL02C (nothing).
+00133  ;-----------------------------------------------------;
+00134  ; 2015: Revision B included some space optimizations
+00135  ;         (suggested by dclxvi) and enhancements
+00136  ;         (suggested by mkl0815 and Klaus2m5):
+00137  ;
+00138  ; * Bit-wise operators & | ^ (and, or, xor)
+00139  ;   Example:  A=$|128) Get a char and set hi-bit
+00140  ;
+00141  ; * Absolute addressed 8-bit memory load and store
+00142  ;   via the {< @} facility:
+00143  ;   Example:  <=P) Point to the I/O port at P
+00144  ;             @=@&254^128) Clear low-bit & flip hi-bit
+00145  ;
+00146  ; * Starting with VTL02B, the space character is no
+00147  ;     longer a valid user variable nor a "valid" binary
+00148  ;     operator.  It's now only significant as a numeric
+00149  ;     constant terminator and as a place-holder in
+00150  ;     strings and program listings, where it may be
+00151  ;     used to improve human readability (at a slight
+00152  ;     cost in execution speed and memory consumption).
+00153  ;   Example:
+00154  ;   *              (VTL-2)
+00155  ;       1000 A=1)         Init loop index
+00156  ;       1010 ?=A)           Print index
+00157  ;       1020 ?="")          Newline
+00158  ;       1030 A=A+1)         Update index
+00159  ;       1040 #=A<10*1010) Loop until done
+00160  ;
+00161  ;   *              (VTL02B)
+00162  ;       1000 A = 1             ) Init loop index
+00163  ;       1010     ? = A         )   Print index
+00164  ;       1020     ? = ""        )   Newline
+00165  ;       1030     A = A + 1     )   Update index
+00166  ;       1040 # = A < 10 * 1010 ) Loop until done
+00167  ;
+00168  ; 2015: Revision C includes further enhancements
+00169  ;   (suggested by Klaus2m5):
+00170  ;
+00171  ; * "THEN" and "ELSE" operators [ ]
+00172  ;     A[B returns 0 if A is 0, otherwise returns B.
+00173  ;     A]B returns B if A is 0, otherwise returns 0.
+00174  ;
+00175  ; * Some effort was made to balance interpreter code
+00176  ;     density with interpreter performance, while
+00177  ;     remaining within the 1KB constraint.  Structured
+00178  ;     programming principles remained at low priority.
+00179  ;-----------------------------------------------------;
+00180  ; VTL02C variables occupy RAM addresses $0080 to $00ff,
+00181  ;   and are little-endian, in the 6502 tradition.
+00182  ; The use of lower-case and some control characters for
+00183  ;   variable names is allowed, but not recommended; any
+00184  ;   attempts to do so would likely result in chaos, due
+00185  ;   to aliasing with upper-case and system variables.
+00186  ; Variables tagged with an asterisk are used internally
+00187  ;   by the interpreter and may change without warning.
+00188  ;   {@ $ ( ) 0..9 : > ?} are (usually) intercepted by
+00189  ;   the interpreter, so their internal use by VTL02C is
+00190  ;   "safe".  The same cannot be said for {; < =}, so be
+00191  ;   careful!
+00192    0080          at       = $80      ; {@}* internal pointer / mem byte
+00193  ; VTL02C standard user variable space
+00194  ;                     {A B C .. X Y Z [ \ ] ^ _}
+00195  ; VTL02C system variable space
+00196    00C0          space    = $c0      ; { }  Starting with VTL02B:  the
+00197  ;                       space character is no longer a
+00198  ;                       valid user variable nor a
+00199  ;                       "valid" binary operator.
+00200  ;                       It is now only significant as a
+00201  ;                       numeric constant terminator and
+00202  ;                       as a place-holder in strings
+00203  ;                       and program listings. 
+00204    00C2          bang     = $c2      ; {!}  return line number
+00205    00C4          quote    = $c4      ; {"}  user ml subroutine vector
+00206    00C6          pound    = $c6      ; {#}  current line number
+00207    00C8          dolr     = $c8      ; {$}* temp storage / char i/o
+00208    00CA          remn     = $ca      ; {%}  remainder of last division
+00209    00CC          ampr     = $cc      ; {&}  pointer to start of array
+00210    00CE          tick     = $ce      ; {'}  pseudo-random number
+00211    00D0          lparen   = $d0      ; {(}* old line # / begin sub-exp
+00212    00D2          rparen   = $d2      ; {)}* temp storage / end sub-exp
+00213    00D4          star     = $d4      ; {*}  pointer to end of free mem
+00214  ;          $d6      ; {+ , - . /}  valid variables
+00215  ; Interpreter argument stack space
+00216    00E0          arg      = $e0      ; {0 1 2 3 4 5 6 7 8 9 :}*
+00217  ; Rarely used variables and argument stack overflow
+00218  ;          $f6      ; {;}* valid user variable
+00219    00F8          lthan    = $f8      ; {<}* user memory byte pointer
+00220  ;        = $fa      ; {=}* valid user variable
+00221    00FC          gthan    = $fc      ; {>}* temp / call ML subroutine
+00222    00FE          ques     = $fe      ; {?}* temp / terminal i/o
+00223  ;
+00224    01FF          nulstk   = $01ff    ; system stack resides in page 1
+00225  ;-----------------------------------------------------;
+00226  ; Equates for a 48K+ Apple 2 (original, +, e, c, gs)
+00227  ;ESC      = 27       ; "Cancel current input line" key
+00228  ;BS       = 8        ; "Delete last keypress" key
+00229  ;OP_OR    = '!'      ; Bit-wise OR operator
+00230  ;linbuf   = $0200    ; input line buffer
+00231  ;prgm     = $0800    ; VTL02B program grows from here
+00232  ;himem    = $8000    ;   ... up to the top of user RAM
+00233  ;vtl02c   = $8000    ; interpreter cold entry point
+00234  ;                     (warm entry point is startok)
+00235  ;KBD      = $c000    ; 128 + keypress if waiting
+00236  ;KEYIN    = $fd0c    ; apple monitor keyin routine
+00237  ;COUT     = $fded    ; apple monitor charout routine
+00238  ;-----------------------------------------------------;
+00239  ; Equates for the Kowalski 6502 simulator
+00240    001B          ESC      = 27       ; "Cancel current input line" key
+00241    0008          BS       = 8        ; "Delete last keypress" key
+00242    007C          OP_OR    = '|'      ; Bit-wise OR operator
+00243    0200          linbuf   = $0200    ; input line buffer
+00244    0220          prgm     = $0220	; 0400    ; VTL02B program grows from here
+00245    03FF          himem    = $03FF	; F000    ;   ... up to the top of user RAM
+00246    DC00          vtl02c   = $DC00    ; interpreter cold entry point
+00247  ;                     (warm entry point is startok)
+00248  io_area  = $f000      ;configure simulator terminal I/O
+00249    CFF1          acia_tx  = $cff1	; KIM UNO, was io_area+1  ;acia tx data register
+00250    CFF4          acia_rx  = $cff4	; KIM UNO, was io_area+4  ;acia rx data register
+00251  ;=====================================================;
+00252  DC00                .org vtl02c
+00253  ;-----------------------------------------------------;
+00254  ; Initialize program area pointers and start VTL02C
+00255  ; 17 bytes
+00256  DC00  A9 20         LDA  #<prgm
+00257  DC02  85 CC         sta  ampr       ; {&} -> empty program
+00258  DC04  A9 02         lda  #>prgm
+00259  DC06  85 CD         sta  ampr+1
+00260  DC08  A9 FF         lda  #<himem
+00261  DC0A  85 D4         sta  star       ; {*} -> top of user RAM
+00262  DC0C  A9 03         lda  #>himem
+00263  DC0E  85 D5         sta  star+1
+00264  startok:
+00265  DC10  38            sec             ; request "OK" message
+00266  ; - - - - - - - - - - - - - - - - - - - - - - - - - - ;
+00267  ; Start/restart VTL02C command line with program intact
+00268  ; 32 bytes
+00269  start:
+00270  DC11  D8            cld             ; a sensible precaution
+00271  DC12  A2 FF         ldx  #<nulstk
+00272  DC14  9A            txs             ; drop whatever is on the stack
+00273  DC15  90 10         bcc  user       ; skip "OK" if carry clear
+00274  DC17  20 39 DD      jsr  outnl
+00275  DC1A  A9 4F         lda  #'O'       ; output \nOK\n to terminal
+00276  DC1C  20 EF DF      jsr  outch
+00277  DC1F  A9 4B         lda  #'K'
+00278  DC21  20 EF DF      jsr  outch
+00279  DC24  20 39 DD      jsr  outnl
+00280  user:
+00281  DC27  20 64 DF      jsr  inln       ; input a line from the user
+00282  DC2A  A2 C6         ldx  #pound     ; cvbin destination = {#}
+00283  DC2C  20 2F DF      jsr  cvbin      ; does line start with a number?
+00284  DC2F  F0 39         beq  direct     ;   no: execute direct statement
+00285  ; - - - - - - - - - - - - - - - - - - - - - - - - - - ;
+00286  ; Delete/insert/replace program line or list program
+00287  ; 7 bytes
+00288  stmnt:
+00289  DC31  18            clc
+00290  DC32  A5 C6         lda  pound
+00291  DC34  05 C7         ora  pound+1    ; {#} = 0?
+00292  DC36  D0 41         bne  skp2       ;   no: delete/insert/replace line
+00293  ; - - - - - - - - - - - - - - - - - - - - - - - - - - ;
+00294  ; List program to terminal and restart "OK" prompt
+00295  ; entry:  Carry must be clear
+00296  ; uses:   findln:, outch:, prnum:, prstr:, {@ ( )}
+00297  ; exit:   to command line via findln:
+00298  ; 20 bytes
+00299  list_:
+00300  DC38  20 10 DD      jsr  findln     ; find program line >= {#}
+00301  DC3B  A2 D0         ldx  #lparen    ; line number for prnum
+00302  DC3D  20 94 DD      jsr  prnum      ; print the line number
+00303  DC40  A9 20         lda  #' '       ; print a space instead of the
+00304  DC42  20 EF DF      jsr  outch      ;   line length byte
+00305  DC45  A9 00         lda  #0         ; zero for delimiter
+00306  DC47  20 1A DD      jsr  prstr      ; print the rest of the line
+00307  DC4A  B0 EC         bcs  list_      ; (always taken)
+00308  ;-----------------------------------------------------;
+00309  ; The main program execution loop
+00310  ; entry:  with (cs) via "beq direct" in user:
+00311  ; exit:   to command line via findln: or "beq start"
+00312  ; 45 bytes
+00313  progr:
+00314  DC4C  F0 14         beq  eloop0     ; if {#} = 0 then ignore and
+00315  DC4E  A4 D1         ldy  lparen+1   ;   continue (false branch)
+00316  DC50  A6 D0         ldx  lparen     ; else did {#} change?
+00317  DC52  C4 C7         cpy  pound+1    ;   yes: perform a branch, with
+00318  DC54  D0 04         bne  branch     ;     carry flag conditioned for
+00319  DC56  E4 C6         cpx  pound      ;     the appropriate direction.
+00320  DC58  F0 0C         beq  eloop      ;   no: execute next line (cs)
+00321  branch:
+00322  DC5A  E8            inx             ;   execute a VTL02B branch
+00323  DC5B  D0 01         bne  branch2
+00324  DC5D  C8            iny
+00325  branch2:
+00326  DC5E  86 C2         stx  bang       ;   {!} = {(} + 1 (return ptr)
+00327  DC60  84 C3         sty  bang+1
+00328  eloop0:
+00329  DC62  2A            rol
+00330  DC63  49 01         eor  #1         ; complement carry flag
+00331  DC65  6A            ror
+00332  eloop:
+00333  DC66  20 10 DD      jsr  findln     ; find first/next line >= {#}
+00334  DC69  C8            iny             ; skip over the length byte
+00335  direct:
+00336  DC6A  08            php             ; (cc: program, cs: direct)
+00337  DC6B  20 3E DD      jsr  exec       ; execute one VTL02B statement
+00338  DC6E  28            plp
+00339  DC6F  A5 C6         lda  pound      ; update Z for {#}
+00340  DC71  05 C7         ora  pound+1    ; if program mode then continue
+00341  DC73  90 D7         bcc  progr      ; if direct mode, did {#} change?
+00342  DC75  F0 9A         beq  start      ;   no: restart "OK" prompt
+00343  DC77  D0 E9         bne  eloop0     ;   yes: execute program from {#}
+00344  ;-----------------------------------------------------;
+00345  ; Delete/insert/replace program line and restart the
+00346  ;   command prompt (no "OK" means success)
+00347  ; entry:  Carry must be clear
+00348  ; uses:   find:, start:, linbuf, {@ > # & * (}
+00349  ; 151 bytes
+00350  skp2:
+00351  DC79  98            tya             ; save linbuf offset pointer
+00352  DC7A  48            pha
+00353  DC7B  20 84 DF      jsr  find       ; point {@} to first line >= {#}
+00354  DC7E  B0 34         bcs  insrt
+00355  DC80  45 C6         eor  pound      ; if line doesn't already exist
+00356  DC82  D0 30         bne  insrt      ; then skip deletion process
+00357  DC84  E4 C7         cpx  pound+1
+00358  DC86  D0 2C         bne  insrt
+00359  DC88  AA            tax             ; x = 0
+00360  DC89  B1 80         lda  (at),y
+00361  DC8B  A8            tay             ; y = length of line to delete
+00362  DC8C  49 FF         eor  #-1
+00363  DC8E  65 CC         adc  ampr       ; {&} = {&} - y
+00364  DC90  85 CC         sta  ampr
+00365  DC92  B0 02         bcs  delt
+00366  DC94  C6 CD         dec  ampr+1
+00367  delt:
+00368  DC96  A5 80         lda  at
+00369  DC98  85 FC         sta  gthan      ; {>} = {@}
+00370  DC9A  A5 81         lda  at+1
+00371  DC9C  85 FD         sta  gthan+1
+00372  delt2:
+00373  DC9E  A5 FC         lda  gthan
+00374  DCA0  C5 CC         cmp  ampr       ; delete the line
+00375  DCA2  A5 FD         lda  gthan+1
+00376  DCA4  E5 CD         sbc  ampr+1
+00377  DCA6  B0 0C         bcs  insrt
+00378  DCA8  B1 FC         lda  (gthan),y
+00379  DCAA  81 FC         sta  (gthan,x)
+00380  DCAC  E6 FC         inc  gthan
+00381  DCAE  D0 EE         bne  delt2
+00382  DCB0  E6 FD         inc  gthan+1
+00383  DCB2  90 EA         bcc  delt2      ; (always taken)
+00384  insrt:
+00385  DCB4  68            pla
+00386  DCB5  AA            tax             ; x = linbuf offset pointer
+00387  DCB6  A5 C6         lda  pound
+00388  DCB8  48            pha             ; push the new line number on
+00389  DCB9  A5 C7         lda  pound+1    ;   the system stack
+00390  DCBB  48            pha
+00391  DCBC  A0 02         ldy  #2
+00392  cntln:
+00393  DCBE  E8            inx  
+00394  DCBF  C8            iny             ; determine new line length in y
+00395  DCC0  BD FF 01      lda  linbuf-1,x ;   and push statement string on
+00396  DCC3  48            pha             ;   the system stack
+00397  DCC4  D0 F8         bne  cntln
+00398  DCC6  C0 04         cpy  #4         ; if empty line then skip the
+00399  DCC8  90 43         bcc  jstart     ;   insertion process
+00400  DCCA  AA            tax             ; x = 0
+00401  DCCB  98            tya
+00402  DCCC  18            clc
+00403  DCCD  65 CC         adc  ampr       ; calculate new program end
+00404  DCCF  85 FC         sta  gthan      ; {>} = {&} + y
+00405  DCD1  8A            txa
+00406  DCD2  65 CD         adc  ampr+1
+00407  DCD4  85 FD         sta  gthan+1
+00408  DCD6  A5 FC         lda  gthan
+00409  DCD8  C5 D4         cmp  star       ; if {>} >= {*} then the program
+00410  DCDA  A5 FD         lda  gthan+1    ;   won't fit in available RAM,
+00411  DCDC  E5 D5         sbc  star+1     ;   so drop the stack and abort
+00412  DCDE  B0 2D         bcs  jstart     ;   to the "OK" prompt
+00413  slide:
+00414  DCE0  A5 CC         lda  ampr
+00415  DCE2  D0 02         bne  slide2
+00416  DCE4  C6 CD         dec  ampr+1
+00417  slide2:
+00418  DCE6  C6 CC         dec  ampr
+00419  DCE8  A5 CC         lda  ampr
+00420  DCEA  C5 80         cmp  at
+00421  DCEC  A5 CD         lda  ampr+1
+00422  DCEE  E5 81         sbc  at+1
+00423  DCF0  90 06         bcc  move       ; slide open a gap inside the
+00424  DCF2  A1 CC         lda  (ampr,x)   ;   program just big enough to
+00425  DCF4  91 CC         sta  (ampr),y   ;   hold the new line
+00426  DCF6  B0 E8         bcs  slide      ; (always taken)
+00427  move:
+00428  DCF8  98            tya
+00429  DCF9  AA            tax             ; x = new line length
+00430  move2:
+00431  DCFA  68            pla             ; pull the statement string and
+00432  DCFB  88            dey             ;   the new line number and store
+00433  DCFC  91 80         sta  (at),y     ;   them in the program gap
+00434  DCFE  D0 FA         bne  move2
+00435  DD00  A0 02         ldy  #2
+00436  DD02  8A            txa
+00437  DD03  91 80         sta  (at),y     ; store length after line number
+00438  DD05  A5 FC         lda  gthan
+00439  DD07  85 CC         sta  ampr       ; {&} = {>}
+00440  DD09  A5 FD         lda  gthan+1
+00441  DD0B  85 CD         sta  ampr+1
+00442  jstart:
+00443  DD0D  4C 11 DC      jmp  start      ; drop stack, restart cmd prompt
+00444  ;-----------------------------------------------------;
+00445  ; Point @[y] to the first/next program line >= {#}
+00446  ; entry:   (cc): start search at beginning of program
+00447  ;          (cs): start search at next line
+00448  ;          ({@} -> beginning of current line)
+00449  ; used by: list_:, progr:
+00450  ; uses:    find:, jstart:, prgm, {@ # & (}
+00451  ; exit:    if line not found then abort to "OK" prompt
+00452  ;          else {@} -> found line, x:a = {#} = {(} =
+00453  ;            actual line number, y = 2, (cc)
+00454  ; 10 bytes
+00455  findln:
+00456  DD10  20 84 DF      jsr  find       ; find first/next line >= {#}
+00457  DD13  B0 F8         bcs  jstart     ; if end then restart "OK" prompt
+00458  DD15  85 C6         sta  pound      ; {#} = {(}
+00459  DD17  86 C7         stx  pound+1
+00460  DD19  60            rts
+00461  ;-----------------------------------------------------;
+00462  ; {?="...} handler; called from exec:
+00463  ; List line handler; called from list_:
+00464  ; 2 bytes
+00465  prstr:
+00466  DD1A  C8            iny             ; skip over the " or length byte
+00467  DD1B  AA            tax             ; x = delimiter, fall through
+00468  ; - - - - - - - - - - - - - - - - - - - - - - - - - - ;
+00469  ; Print a string at @[y]
+00470  ; x holds the delimiter char, which is skipped over,
+00471  ;   not printed (a null byte is always a delimiter)
+00472  ; If a key was pressed, it pauses for another keypress
+00473  ;   before returning.  If either of those keys was a
+00474  ;   ctrl-C, it drops the stack and restarts the "OK"
+00475  ;   prompt with the user program intact
+00476  ; entry:  @[y] -> string, x = delimiter char
+00477  ; uses:   inch:, inkey:, jstart:, outch:, execrts:
+00478  ; exit:   (normal) @[y] -> null or byte after delimiter
+00479  ;         (ctrl-C) drop the stack & restart "OK" prompt
+00480  ; 39 bytes
+00481  prmsg:
+00482  DD1C  8A            txa
+00483  DD1D  D1 80         cmp  (at),y     ; found delimiter or null?
+00484  DD1F  F0 0A         beq  prmsg2     ; yes: finish up
+00485  DD21  B1 80         lda  (at),y
+00486  DD23  F0 06         beq  prmsg2
+00487  DD25  20 EF DF      jsr  outch      ; no: print char to terminal
+00488  DD28  C8            iny             ;   and loop (with safety escape)
+00489  DD29  10 F1         bpl  prmsg
+00490  prmsg2:
+00491  DD2B  AA            tax             ; save closing delimiter
+00492  DD2C  20 CC DF      jsr  inkey      ; any key = pause?
+00493  ; patch - remove garbage output when halting print
+00494  ;    bcc  prout      ;   no: proceed
+00495  ;    jsr  inch       ;   yes: wait for another key
+00496  ;prout:
+00497  DD2F  8A            txa             ; retrieve closing delimiter
+00498  DD30  F0 07         beq  outnl      ; always \n after null delimiter
+00499  DD32  20 C2 DF      jsr  skpbyte    ; skip over the delimiter
+00500  DD35  C9 3B         cmp  #';'       ; if trailing char is ';' then
+00501  DD37  F0 4F         beq  execrts    ;   suppress the \n
+00502  outnl:
+00503  DD39  A9 0D         lda  #$0d       ; \n to terminal
+00504  joutch:
+00505  DD3B  4C EF DF      jmp  outch
+00506  ;-----------------------------------------------------;
+00507  ; Execute a (hopefully) valid VTL02C statement at @[y]
+00508  ; entry:   @[y] -> left-side of statement
+00509  ; uses:    nearly everything
+00510  ; exit:    note to machine language subroutine {>=...}
+00511  ;            users: no registers or variables are
+00512  ;            required to be preserved except the system
+00513  ;            stack pointer, the text base pointer {@},
+00514  ;            and the original line number {(}
+00515  ; if there is a {"} directly after the assignment
+00516  ;   operator, the statement will execute as {?="...},
+00517  ;   regardless of the variable named on the left side
+00518  ; 84 bytes
+00519  exec:
+00520  DD3E  20 C3 DF      jsr  getbyte    ; fetch left-side variable name
+00521  DD41  F0 45         beq  execrts    ; do nothing with a null statement
+00522  DD43  C9 29         cmp  #')'       ; same for a full-line comment
+00523  DD45  F0 41         beq  execrts
+00524  DD47  C8            iny
+00525  DD48  A2 E0         ldx  #arg       ; initialize argument pointer
+00526  DD4A  20 31 DE      jsr  convp      ; arg[{0}] -> left-side variable
+00527  DD4D  20 C3 DF      jsr  getbyte    ; skip over assignment operator
+00528  DD50  20 C2 DF      jsr  skpbyte    ; is right-side a literal string?
+00529  DD53  C9 22         cmp  #'"'       ;   yes: print the string with
+00530  DD55  F0 C3         beq  prstr      ;     trailing ';' check & return
+00531  DD57  A2 E2         ldx  #arg+2     ; point eval to arg[{1}]
+00532  DD59  20 BF DD      jsr  eval       ; evaluate right-side in arg[{1}]
+00533  DD5C  A5 E2         lda  arg+2
+00534  DD5E  A0 00         ldy  #0
+00535  DD60  A6 E1         ldx  arg+1      ; was left-side an array element?
+00536  DD62  D0 12         bne  exec3      ;   yes: skip to default actions
+00537  DD64  A6 E0         ldx  arg
+00538  DD66  E0 80         cpx  #at        ; if {@=...} statement then poke
+00539  DD68  F0 25         beq  poke       ;   low half of arg[{1}] to ({<})
+00540  DD6A  E0 C8         cpx  #dolr      ; if {$=...} statement then print
+00541  DD6C  F0 CD         beq  joutch     ;   arg[{1}] as ASCII character
+00542  DD6E  E0 FE         cpx  #ques      ; if {?=...} statement then print
+00543  DD70  F0 20         beq  prnum0     ;   arg[{1}] as unsigned decimal
+00544  DD72  E0 FC         cpx  #gthan     ; if {>=...} statement then call
+00545  DD74  F0 13         beq  usr        ;   user-defined ml routine
+00546  exec3:
+00547  DD76  91 E0         sta  (arg),y
+00548  DD78  65 CF         adc  tick+1     ; store arg[{1}] in the left-side
+00549  DD7A  2A            rol             ;   variable
+00550  DD7B  AA            tax
+00551  DD7C  C8            iny
+00552  DD7D  A5 E3         lda  arg+3
+00553  DD7F  91 E0         sta  (arg),y
+00554  DD81  65 CE         adc  tick       ; pseudo-randomize {'}
+00555  DD83  2A            rol
+00556  DD84  85 CF         sta  tick+1
+00557  DD86  86 CE         stx  tick
+00558  execrts:
+00559  DD88  60            rts
+00560  usr:
+00561  DD89  AA            tax             ; jump to user ml routine with
+00562  DD8A  A5 E3         lda  arg+3      ;   arg[{1}] in a:x (MSB:LSB)
+00563  DD8C  6C C4 00      jmp  (quote)    ; {"} must point to valid 6502 code
+00564  poke:
+00565  DD8F  91 F8         sta  (lthan),y
+00566  DD91  60            rts
+00567  ;-----------------------------------------------------;
+00568  ; {?=...} handler; called by exec:
+00569  ; 2 bytes
+00570  prnum0:
+00571  DD92  A2 E2         ldx  #arg+2     ; x -> arg[{1}], fall through
+00572  ; - - - - - - - - - - - - - - - - - - - - - - - - - - ;
+00573  ; Print an unsigned decimal number (0..65535) in var[x]
+00574  ; entry:   var[x] = number to print
+00575  ; uses:    div:, outch:, var[x+2], saves original {%}
+00576  ; exit:    var[x] = 0, var[x+2] = 10
+00577  ; 43 bytes
+00578  prnum:
+00579  DD94  A5 CA         lda  remn
+00580  DD96  48            pha             ; save {%}
+00581  DD97  A5 CB         lda  remn+1
+00582  DD99  48            pha
+00583  DD9A  A9 00         lda  #0         ; null delimiter for print
+00584  DD9C  48            pha    
+00585  DD9D  95 03         sta  3,x
+00586  DD9F  A9 0A         lda  #10        ; divisor = 10
+00587  DDA1  95 02         sta  2,x        ; repeat {
+00588  prnum2:
+00589  DDA3  20 04 DF      jsr  div        ;   divide var[x] by 10
+00590  DDA6  A5 CA         lda  remn
+00591  DDA8  09 30         ora  #'0'       ;   convert remainder to ASCII
+00592  DDAA  48            pha             ;   stack digits in ascending
+00593  DDAB  B5 00         lda  0,x        ;     order ('0' for zero)
+00594  DDAD  15 01         ora  1,x
+00595  DDAF  D0 F2         bne  prnum2     ; } until var[x] is 0
+00596  DDB1  68            pla
+00597  prnum3:
+00598  DDB2  20 EF DF      jsr  outch      ; print digits in descending
+00599  DDB5  68            pla             ;   order until delimiter is
+00600  DDB6  D0 FA         bne  prnum3     ;   encountered
+00601  DDB8  68            pla
+00602  DDB9  85 CB         sta  remn+1     ; restore {%}
+00603  DDBB  68            pla
+00604  DDBC  85 CA         sta  remn
+00605  DDBE  60            rts
+00606  ;-----------------------------------------------------;
+00607  ; Evaluate a (hopefully) valid VTL02C expression at
+00608  ;   @[y] and place its calculated value in arg[x]
+00609  ; A VTL02C expression is defined as a string of one or
+00610  ;   more terms, separated by operators and terminated
+00611  ;   with a null or an unmatched right parenthesis
+00612  ; A term is defined as a variable name, a decimal
+00613  ;   constant, or a parenthesized sub-expression; terms
+00614  ;   are evaluated strictly from left to right
+00615  ; A variable name is defined as a user variable, an
+00616  ;   array element expression enclosed in {: )}, or a
+00617  ;   system variable (which may have side-effects)
+00618  ; entry:   @[y] -> expression text, x -> argument
+00619  ; uses:    getval:, oper:, {@}, argument stack area
+00620  ; exit:    arg[x] = result, @[y] -> next text
+00621  ; 31 bytes
+00622  eval:
+00623  DDBF  A9 00         lda  #0
+00624  DDC1  95 00         sta  0,x        ; start evaluation by simulating
+00625  DDC3  95 01         sta  1,x        ;   {0+expression}
+00626  DDC5  A9 2B         lda  #'+'
+00627  notdn:
+00628  DDC7  48            pha             ; stack alleged operator
+00629  DDC8  E8            inx             ; advance the argument stack
+00630  DDC9  E8            inx             ;   pointer
+00631  DDCA  20 DE DD      jsr  getval     ; arg[x+2] = value of next term
+00632  DDCD  CA            dex
+00633  DDCE  CA            dex
+00634  DDCF  68            pla             ; retrieve and apply the operator
+00635  DDD0  20 81 DE      jsr  oper       ;   to arg[x], arg[x+2]
+00636  DDD3  20 C3 DF      jsr  getbyte    ; end of expression?
+00637  DDD6  F0 05         beq  evalrts    ;   (null or right parenthesis)
+00638  DDD8  C8            iny
+00639  DDD9  C9 29         cmp  #')'       ;   no: skip over the operator
+00640  DDDB  D0 EA         bne  notdn      ;     and continue the evaluation
+00641  evalrts:
+00642  DDDD  60            rts             ;   yes: return with final result
+00643  ;-----------------------------------------------------;
+00644  ; Get numeric value of the term at @[y] into var[x]
+00645  ; Some examples of valid terms:  123, $, H, (15-:J)/?)
+00646  ; 83 bytes
+00647  getval:
+00648  DDDE  20 2F DF      jsr  cvbin      ; decimal number at @[y]?
+00649  DDE1  D0 4D         bne  getrts     ;   yes: return with it in var[x]
+00650  DDE3  20 C3 DF      jsr  getbyte
+00651  DDE6  C8            iny
+00652  DDE7  C9 3F         cmp  #'?'       ; user line input?
+00653  DDE9  D0 17         bne  getval2
+00654  DDEB  98            tya             ;   yes:
+00655  DDEC  48            pha
+00656  DDED  A5 80         lda  at         ;     save @[y]
+00657  DDEF  48            pha             ;     (current expression ptr)
+00658  DDF0  A5 81         lda  at+1
+00659  DDF2  48            pha
+00660  DDF3  20 64 DF      jsr  inln       ; input expression from user
+00661  DDF6  20 BF DD      jsr  eval       ; evaluate, var[x] = result
+00662  DDF9  68            pla
+00663  DDFA  85 81         sta  at+1
+00664  DDFC  68            pla
+00665  DDFD  85 80         sta  at         ; restore @[y]
+00666  DDFF  68            pla
+00667  DE00  A8            tay
+00668  DE01  60            rts             ; skip over "?" and return
+00669  getval2:
+00670  DE02  C9 24         cmp  #'$'       ; user char input?
+00671  DE04  D0 05         bne  getval2a
+00672  DE06  20 DF DF      jsr  inch       ;   yes: input one char
+00673  DE09  B0 23         bcs  getval5    ;     (always taken)
+00674  getval2a:
+00675  DE0B  C9 40         cmp  #'@'       ; memory access?
+00676  DE0D  D0 0A         bne  getval3
+00677  DE0F  84 C8         sty  dolr       ;   yes:
+00678  DE11  A0 00         ldy  #0
+00679  DE13  B1 F8         lda  (lthan),y  ;     access memory byte at ({<})
+00680  DE15  A4 C8         ldy  dolr
+00681  DE17  D0 15         bne  getval5    ;     (always taken)
+00682  getval3:
+00683  DE19  C9 28         cmp  #'('       ; sub-expression?
+00684  DE1B  F0 A2         beq  eval       ;   yes: evaluate it recursively
+00685  DE1D  20 31 DE      jsr  convp      ;   no: first set var[x] to the
+00686  DE20  A1 00         lda  (0,x)      ;     named variable's address,
+00687  DE22  48            pha             ;     then replace that address
+00688  DE23  F6 00         inc  0,x        ;     with the variable's actual
+00689  DE25  D0 02         bne  getval4    ;     value before returning
+00690  DE27  F6 01         inc  1,x
+00691  getval4:
+00692  DE29  A1 00         lda  (0,x)
+00693  DE2B  95 01         sta  1,x        ; store high-byte of term value
+00694  DE2D  68            pla
+00695  getval5:
+00696  DE2E  95 00         sta  0,x        ; store low-byte of term value
+00697  getrts:
+00698  DE30  60            rts
+00699  ;-----------------------------------------------------;
+00700  ; Set var[x] to the address of the variable named in a
+00701  ; entry:   a holds variable name, @[y] -> text holding
+00702  ;            array index expression (if a = ':')
+00703  ; uses:    plus, eval, oper8d, {@ &}
+00704  ; exit:    (eq): var[x] -> variable, @[y] unchanged
+00705  ;          (ne): var[x] -> array element,
+00706  ;                @[y] -> following text
+00707  ; 26 bytes
+00708  convp:
+00709  DE31  C9 3A         cmp  #':'       ; array element?
+00710  DE33  D0 11         bne  simple     ;   no: var[x] -> simple variable
+00711  DE35  20 BF DD      jsr  eval       ;   yes: evaluate array index at
+00712  DE38  16 00         asl  0,x        ;     @[y] and advance y
+00713  DE3A  36 01         rol  1,x
+00714  DE3C  A5 CC         lda  ampr       ;     var[x] -> array element
+00715  DE3E  95 02         sta  2,x        ;       at address 2*index+&
+00716  DE40  A5 CD         lda  ampr+1
+00717  DE42  95 03         sta  3,x
+00718  DE44  D0 2D         bne  plus       ;     (always taken)
+00719  ; The following section is designed to translate the
+00720  ;   named simple variable from its ASCII value to its
+00721  ;   zero-page address.  In this case, 'A' translates
+00722  ;   to $82, '!' translates to $c2, etc.  The method
+00723  ;   employed must correspond to the zero-page equates
+00724  ;   above, or strange and not-so-wonderful bugs will
+00725  ;   befall the weary traveller on his or her porting
+00726  ;   journey.
+00727  simple:
+00728  DE46  0A            asl             ; form simple variable address
+00729  DE47  09 80         ora  #$80       ; mapping function is (a*2)|128
+00730  DE49  30 72         bmi  oper8d     ; (always taken)
+00731  ;-----------------------------------------------------;
+00732  ; 16-bit unsigned multiply routine: var[x] *= var[x+2]
+00733  ; exit:    overflow is ignored/discarded, var[x+2] and
+00734  ;          {>} are modified, a = 0
+00735  ; 40 bytes
+00736  mul:
+00737  DE4B  B5 00         lda  0,x
+00738  DE4D  85 FC         sta  gthan
+00739  DE4F  B5 01         lda  1,x        ; {>} = var[x]
+00740  DE51  85 FD         sta  gthan+1
+00741  DE53  A9 00         lda  #0
+00742  DE55  95 00         sta  0,x        ; var[x] = 0
+00743  DE57  95 01         sta  1,x
+00744  mul2:
+00745  DE59  A5 FC         lda  gthan
+00746  DE5B  05 FD         ora  gthan+1
+00747  DE5D  F0 13         beq  mulrts     ; exit early if {>} = 0
+00748  DE5F  46 FD         lsr  gthan+1
+00749  DE61  66 FC         ror  gthan      ; {>} /= 2
+00750  DE63  90 03         bcc  mul3
+00751  DE65  20 73 DE      jsr  plus       ; form the product in var[x]
+00752  mul3:
+00753  DE68  16 02         asl  2,x
+00754  DE6A  36 03         rol  3,x        ; left-shift var[x+2]
+00755  DE6C  B5 02         lda  2,x
+00756  DE6E  15 03         ora  3,x        ; loop until var[x+2] = 0
+00757  DE70  D0 E7         bne  mul2
+00758  mulrts:
+00759  DE72  60            rts
+00760  ;-----------------------------------------------------;
+00761  ; var[x] += var[x+2]
+00762  ; 14 bytes
+00763  plus:
+00764  DE73  18            clc
+00765  DE74  B5 00         lda  0,x
+00766  DE76  75 02         adc  2,x
+00767  DE78  95 00         sta  0,x
+00768  DE7A  B5 01         lda  1,x
+00769  DE7C  75 03         adc  3,x
+00770  DE7E  95 01         sta  1,x
+00771  DE80  60            rts
+00772  ;-----------------------------------------------------;
+00773  ; Apply the binary operator in a to var[x] and var[x+2]
+00774  ; Valid VTL02C operators are {* + / [ ] - | ^ & < = >}
+00775  ; {>} is defined as greater than _or_equal_
+00776  ; An undefined operator will be interpreted as one of
+00777  ;   the three comparison operators
+00778  ; 37 bytes
+00779  oper:
+00780  DE81  C9 2B         cmp  #'+'       ; addition operator?
+00781  DE83  F0 EE         beq  plus
+00782  DE85  C9 2A         cmp  #'*'       ; multiplication operator?
+00783  DE87  F0 C2         beq  mul
+00784  DE89  C9 2F         cmp  #'/'       ; division operator?
+00785  DE8B  F0 77         beq  div
+00786  DE8D  C9 5B         cmp  #'['       ; "then" operator?
+00787  DE8F  F0 32         beq  then_
+00788  DE91  C9 5D         cmp  #']'       ; "else" operator?
+00789  DE93  F0 3C         beq  else_
+00790  DE95  CA            dex             ; (factored from the following ops)
+00791  DE96  C9 2D         cmp  #'-'       ; subtraction operator?
+00792  DE98  F0 41         beq  minus
+00793  DE9A  C9 7C         cmp  #OP_OR     ; bit-wise or operator?
+00794  DE9C  F0 52         beq  or_
+00795  DE9E  C9 5E         cmp  #'^'       ; bit-wise xor operator?
+00796  DEA0  F0 58         beq  xor_
+00797  DEA2  C9 26         cmp  #'&'       ; bit-wise and operator?
+00798  DEA4  F0 40         beq  and_
+00799  ; - - - - - - - - - - - - - - - - - - - - - - - - - - ;
+00800  ; Apply comparison operator in a to var[x] and var[x+2]
+00801  ;   and place result in var[x] (1: true, 0: false)
+00802  ; expects:  (cs), pre-decremented x
+00803  ; 29 bytes
+00804  DEA6  49 3C         eor  #'<'       ; 0: '<'  1: '='  2: '>'
+00805  DEA8  85 FC         sta  gthan      ; other values in a are undefined,
+00806  DEAA  20 DB DE      jsr  minus      ;   but _will_ produce some result
+00807  DEAD  C6 FC         dec  gthan      ; var[x] -= var[x+2]
+00808  DEAF  D0 05         bne  oper8b     ; equality test?
+00809  DEB1  15 00         ora  0,x        ;   yes: 'or' high and low bytes
+00810  DEB3  F0 04         beq  oper8c     ;     (cs) if 0
+00811  DEB5  18            clc             ;     (cc) if not 0
+00812  oper8b:
+00813  DEB6  A5 FC         lda  gthan
+00814  DEB8  2A            rol
+00815  oper8c:
+00816  DEB9  69 00         adc  #0
+00817  DEBB  29 01         and  #1         ; var[x] = 1 (true), 0 (false)
+00818  oper8d:
+00819  DEBD  95 00         sta  0,x
+00820  DEBF  A9 00         lda  #0
+00821  DEC1  F0 20         beq  minus3     ; (always taken)
+00822  ;-----------------------------------------------------;
+00823  ; expects:  (cs)
+00824  ; 14 bytes
+00825  then_:
+00826  DEC3  B5 00         lda  0,x
+00827  DEC5  15 01         ora  1,x
+00828  DEC7  F0 1C         beq  minus4
+00829  DEC9  B5 02         lda  2,x
+00830  DECB  95 00         sta  0,x
+00831  DECD  B5 03         lda  3,x
+00832  DECF  B0 12         bcs  minus3     ; (always taken)
+00833  ;-----------------------------------------------------;
+00834  ; expects:  (cs)
+00835  ; 10 bytes
+00836  else_:
+00837  DED1  B5 00         lda  0,x
+00838  DED3  15 01         ora  1,x
+00839  DED5  F0 9C         beq  plus
+00840  DED7  A9 00         lda  #0
+00841  DED9  F0 E2         beq  oper8d     ; (always taken)
+00842  ;-----------------------------------------------------;
+00843  ; var[x] -= var[x+2]
+00844  ; expects:  (cs), pre-decremented x
+00845  ; 11 bytes
+00846  minus:
+00847  DEDB  20 DF DE      jsr  minus2
+00848  DEDE  E8            inx
+00849  minus2:
+00850  DEDF  B5 01         lda  1,x
+00851  DEE1  F5 03         sbc  3,x
+00852  minus3:
+00853  DEE3  95 01         sta  1,x
+00854  minus4:
+00855  DEE5  60            rts
+00856  ;-----------------------------------------------------;
+00857  ; var[x] &= var[x+2]
+00858  ; expects:  (cs), pre-decremented x
+00859  ; 10 bytes
+00860  and_:
+00861  DEE6  20 EA DE      jsr  and_2
+00862  DEE9  E8            inx
+00863  and_2:
+00864  DEEA  B5 01         lda  1,x
+00865  DEEC  35 03         and  3,x
+00866  DEEE  B0 F3         bcs  minus3     ; (always taken)
+00867  ;-----------------------------------------------------;
+00868  ; var[x] |= var[x+2]
+00869  ; expects:  (cs), pre-decremented x
+00870  ; 10 bytes
+00871  or_:
+00872  DEF0  20 F4 DE      jsr  or_2
+00873  DEF3  E8            inx
+00874  or_2:
+00875  DEF4  B5 01         lda  1,x
+00876  DEF6  15 03         ora  3,x
+00877  DEF8  B0 E9         bcs  minus3     ; (always taken)
+00878  ;-----------------------------------------------------;
+00879  ; var[x] ^= var[x+2]
+00880  ; expects:  (cs), pre-decremented x
+00881  ; 10 bytes
+00882  xor_:
+00883  DEFA  20 FE DE      jsr  xor_2
+00884  DEFD  E8            inx
+00885  xor_2:
+00886  DEFE  B5 01         lda  1,x
+00887  DF00  55 03         eor  3,x
+00888  DF02  B0 DF         bcs  minus3     ; (always taken)
+00889  ;-----------------------------------------------------;
+00890  ; 16-bit unsigned division routine
+00891  ;   var[x] /= var[x+2], {%} = remainder, {>} modified
+00892  ;   var[x] /= 0 produces {%} = var[x], var[x] = 65535
+00893  ; 43 bytes
+00894  div:
+00895  DF04  A9 00         lda  #0
+00896  DF06  85 CA         sta  remn       ; {%} = 0
+00897  DF08  85 CB         sta  remn+1
+00898  DF0A  A9 10         lda  #16
+00899  DF0C  85 FC         sta  gthan      ; {>} = loop counter
+00900  div1:
+00901  DF0E  16 00         asl  0,x        ; var[x] is gradually replaced
+00902  DF10  36 01         rol  1,x        ;   with the quotient
+00903  DF12  26 CA         rol  remn       ; {%} is gradually replaced
+00904  DF14  26 CB         rol  remn+1     ;   with the remainder
+00905  DF16  A5 CA         lda  remn
+00906  DF18  D5 02         cmp  2,x
+00907  DF1A  A5 CB         lda  remn+1     ; partial remainder >= var[x+2]?
+00908  DF1C  F5 03         sbc  3,x
+00909  DF1E  90 0A         bcc  div2
+00910  DF20  85 CB         sta  remn+1     ;   yes: update the partial
+00911  DF22  A5 CA         lda  remn       ;     remainder and set the
+00912  DF24  F5 02         sbc  2,x        ;     low bit in the partial
+00913  DF26  85 CA         sta  remn       ;     quotient
+00914  DF28  F6 00         inc  0,x
+00915  div2:
+00916  DF2A  C6 FC         dec  gthan
+00917  DF2C  D0 E0         bne  div1       ; loop 16 times
+00918  DF2E  60            rts
+00919  ;-----------------------------------------------------;
+00920  ; If text at @[y] is a decimal constant, translate it
+00921  ;   into var[x] (discarding any overflow) and update y
+00922  ; entry:   @[y] -> text containing possible constant;
+00923  ;            leading space characters are skipped, but
+00924  ;            any spaces encountered after a conversion
+00925  ;            has begun will end the conversion.
+00926  ; used by: user:, getval:
+00927  ; uses:    mul:, plus:, var[x], var[x+2], {@ > ?}
+00928  ; exit:    (ne): var[x] = constant, @[y] -> next text
+00929  ;          (eq): var[x] = 0, @[y] unchanged
+00930  ;          (cs): in all but the truly strangest cases
+00931  ; 43 bytes
+00932  cvbin:
+00933  DF2F  A9 00         lda  #0
+00934  DF31  95 00         sta  0,x        ; var[x] = 0
+00935  DF33  95 01         sta  1,x
+00936  DF35  95 03         sta  3,x
+00937  DF37  20 C3 DF      jsr  getbyte    ; skip any leading spaces
+00938  DF3A  84 FE         sty  ques       ; save pointer
+00939  cvbin2:
+00940  DF3C  B1 80         lda  (at),y     ; grab a char
+00941  DF3E  49 30         eor  #'0'       ; if char at @[y] is not a
+00942  DF40  C9 0A         cmp  #10        ;   decimal digit then stop
+00943  DF42  B0 13         bcs  cvbin3     ;   the conversion
+00944  DF44  48            pha             ; save decimal digit
+00945  DF45  A9 0A         lda  #10
+00946  DF47  95 02         sta  2,x
+00947  DF49  20 4B DE      jsr  mul        ; var[x] *= 10
+00948  DF4C  95 03         sta  3,x
+00949  DF4E  68            pla             ; retrieve decimal digit
+00950  DF4F  95 02         sta  2,x
+00951  DF51  20 73 DE      jsr  plus       ; var[x] += digit
+00952  DF54  C8            iny             ; loop for more digits
+00953  DF55  10 E5         bpl  cvbin2     ;   (with safety escape)
+00954  cvbin3:
+00955  DF57  C4 FE         cpy  ques       ; (ne) if valid, (eq) if not
+00956  DF59  60            rts
+00957  ;-----------------------------------------------------;
+00958  ; Accept input line from user and store it in linbuf,
+00959  ;   zero-terminated (allows very primitive edit/cancel)
+00960  ; entry:   (jsr to inln or newln, not inln6)
+00961  ; used by: user:, getval:
+00962  ; uses:    inch:, outnl:, linbuf, {@}
+00963  ; exit:    @[y] -> linbuf
+00964  ; 42 bytes
+00965  inln6:
+00966  DF5A  C9 1B         cmp  #ESC       ; escape?
+00967  DF5C  F0 03         beq  newln      ;   yes: discard entire line
+00968  DF5E  C8            iny             ; line limit exceeded?
+00969  DF5F  10 10         bpl  inln2      ;   no: keep going
+00970  newln:
+00971  DF61  20 39 DD      jsr  outnl      ;   yes: discard entire line
+00972  inln:
+00973  DF64  A0 00         ldy  #<linbuf   ; entry point: start a fresh line
+00974  DF66  84 80         sty  at         ; {@} -> input line buffer
+00975  DF68  A0 02         ldy  #>linbuf
+00976  DF6A  84 81         sty  at+1
+00977  DF6C  A0 01         ldy  #1
+00978  inln5:
+00979  DF6E  88            dey
+00980  DF6F  30 F0         bmi  newln
+00981  inln2:
+00982  DF71  20 DF DF      jsr  inch       ; get (and echo) one key press
+00983  DF74  C9 08         cmp  #BS        ; backspace?
+00984  DF76  F0 F6         beq  inln5      ;   yes: delete previous char
+00985  DF78  C9 0D         cmp  #$0d       ; cr?
+00986  DF7A  D0 02         bne  inln3
+00987  DF7C  A9 00         lda  #0         ;   yes: replace with null
+00988  inln3:
+00989  DF7E  91 80         sta  (at),y     ; put key in linbuf
+00990  DF80  D0 D8         bne  inln6      ; continue if not null
+00991  DF82  A8            tay             ; y = 0
+00992  DF83  60            rts
+00993  ;-----------------------------------------------------;
+00994  ; Find the first/next stored program line >= {#}
+00995  ; entry:   (cc): start search at program beginning
+00996  ;          (cs): start search at next line
+00997  ;          ({@} -> beginning of current line)
+00998  ; used by: skp2:, findln:
+00999  ; uses:    prgm, {@ # & (}
+01000  ; exit:    (cs): {@}, x:a and {(} undefined, y = 2
+01001  ;          (cc): {@} -> beginning of found line, y = 2,
+01002  ;                x:a = {(} = actual found line number
+01003  ; 62 bytes
+01004  find:
+01005  DF84  A2 02         ldx  #>prgm
+01006  DF86  A9 20         lda  #<prgm
+01007  DF88  90 15         bcc  find1st    ; cc: search begins at first line
+01008  DF8A  A6 81         ldx  at+1
+01009  DF8C  A0 02         ldy  #2
+01010  findnxt:
+01011  DF8E  A5 80         lda  at
+01012  DF90  C5 CC         cmp  ampr
+01013  DF92  A5 81         lda  at+1
+01014  DF94  E5 CD         sbc  ampr+1     ; {@} >= {&} (end of program)?
+01015  DF96  B0 29         bcs  findrts    ;   yes: search failed (cs)
+01016  find3:
+01017  DF98  A5 80         lda  at
+01018  DF9A  71 80         adc  (at),y     ;   no: {@} -> next line
+01019  DF9C  90 03         bcc  find5
+01020  DF9E  E8            inx
+01021  find1st:
+01022  DF9F  86 81         stx  at+1
+01023  find5:
+01024  DFA1  85 80         sta  at
+01025  DFA3  A0 00         ldy  #0
+01026  DFA5  B1 80         lda  (at),y
+01027  DFA7  85 D0         sta  lparen     ; {(} = current line number
+01028  DFA9  C5 C6         cmp  pound      ;   (invalid if {@} >= {&}, but
+01029  DFAB  C8            iny             ;   we'll catch that later...)
+01030  DFAC  B1 80         lda  (at),y
+01031  DFAE  85 D1         sta  lparen+1
+01032  DFB0  E5 C7         sbc  pound+1    ; if {(} < {#} then try the next
+01033  DFB2  C8            iny             ;   program line
+01034  DFB3  90 D9         bcc  findnxt
+01035  DFB5  A5 80         lda  at         ; {@} >= {&} (end of program)?
+01036  DFB7  C5 CC         cmp  ampr       ;   yes: search failed (cs)
+01037  DFB9  A5 81         lda  at+1       ;   no: search succeeded (cc)
+01038  DFBB  E5 CD         sbc  ampr+1
+01039  DFBD  A5 D0         lda  lparen
+01040  DFBF  A6 D1         ldx  lparen+1
+01041  findrts:
+01042  DFC1  60            rts
+01043  ;-----------------------------------------------------;
+01044  ; Fetch a byte at @[y], ignoring space characters
+01045  ; 10 bytes
+01046  skpbyte:
+01047  DFC2  C8            iny             ; skip over current char
+01048  getbyte:
+01049  DFC3  B1 80         lda  (at),y
+01050  DFC5  F0 04         beq  getbyt2
+01051  DFC7  C9 20         cmp  #' '
+01052  DFC9  F0 F7         beq  skpbyte    ; skip over any space char(s)
+01053  getbyt2:
+01054  DFCB  60            rts
+01055  ;============ Original I/O subroutines ===============;
+01056  ;-----------------------------------------------------;
+01057  ; Check for user keypress and return with (cc) if none
+01058  ;   is pending.  Otherwise, fall through to inch
+01059  ;   and return with (cs).
+01060  ; 6 bytes
+01061  ;inkey:
+01062  ;    lda  KBD        ; is there a keypress waiting?
+01063  ;    asl
+01064  ;    bcc  outrts     ;   no: return with (cc)
+01065  ; - - - - - - - - - - - - - - - - - - - - - - - - - - ;
+01066  ; Read key from stdin into a, echo, (cs)
+01067  ; drop stack and abort to "OK" prompt if ctrl-C
+01068  ; 16 bytes
+01069  ;inch:
+01070  ;    sty  dolr       ; save y reg
+01071  ;    jsr  KEYIN      ; get a char from keyboard
+01072  ;    ldy  dolr       ; restore y reg
+01073  ;    and  #$7f       ; strip apple's hi-bit
+01074  ;    cmp  #$03       ; ctrl-C?
+01075  ;    bne  outch      ;   no: echo to terminal
+01076  ;    jmp  start      ;   yes: abort to "OK" prompt
+01077  ; - - - - - - - - - - - - - - - - - - - - - - - - - - ;
+01078  ; Print ASCII char in a to stdout, (cs)
+01079  ; 9 bytes
+01080  ;outch:
+01081  ;    pha             ; save original char
+01082  ;    ora  #$80       ; apples prefer "high" ASCII
+01083  ;    jsr  COUT       ; emit char via apple monitor
+01084  ;    pla             ; restore original char
+01085  ;    sec             ; (by contract with callers)
+01086  ;outrts:
+01087  ;    rts
+01088  ;-----------------------------------------------------;
+01089  ;========== 2m5 SBC emulator I/O subroutines ============;
+01090  ;-----------------------------------------------------;
+01091  ; Check for user keypress and return if none
+01092  ;   is pending.  Otherwise, check for ctrl-C and
+01093  ;   return after next keypress.
+01094  ;
+01095  inkey:
+01096  DFCC  AD F4 CF      lda  acia_rx    ; Is there a character waiting?
+01097  DFCF  F0 0D         beq  inkeyr     ;   no: return
+01098  DFD1  C9 03         cmp  #3         ; is ctrl-c
+01099  DFD3  F0 17         beq  istart     ;   yes: abort to OK prompt
+01100  inkeyp:
+01101  DFD5  AD F4 CF      lda  acia_rx    ; pause until next key
+01102  DFD8  F0 FB         beq  inkeyp
+01103  DFDA  C9 03         cmp  #3         ; is ctrl-c
+01104  DFDC  F0 0E         beq  istart     ;   yes: abort to OK prompt
+01105  inkeyr:
+01106  DFDE  60            rts
+01107  ; - - - - - - - - - - - - - - - - - - - - - - - - - - ;
+01108  ; Read key from stdin into a, echo, (cs)
+01109  ; Dump stack and abort to "OK" prompt if ctrl-C
+01110  ; 16 bytes
+01111  inch:
+01112  DFDF  AD F4 CF      lda  acia_rx    ; get character from rx register
+01113  DFE2  F0 FB         beq  inch       ; wait for character !=0
+01114  DFE4  C9 0A         cmp  #10        ; remove line feed to allow paste
+01115  DFE6  F0 F7         beq  inch       ; in the Kowalski I/O window
+01116  inch2:
+01117  DFE8  C9 03         cmp  #$03       ; ctrl-C?
+01118  DFEA  D0 03         bne  outch      ;   no: echo to terminal
+01119  istart:
+01120  DFEC  4C 11 DC      jmp  start      ;   yes: abort to "OK" prompt
+01121  ; - - - - - - - - - - - - - - - - - - - - - - - - - - ;
+01122  ; Print ascii char in a to stdout, (cs)
+01123  ; 16 bytes
+01124  outch:
+01125  DFEF  C9 0D         cmp  #13        ; add line feed to carriage return
+01126  DFF1  D0 07         bne  skip_cr
+01127  DFF3  A9 0A         lda  #10
+01128  DFF5  8D F1 CF      sta  acia_tx
+01129  DFF8  A9 0D         lda  #13
+01130  skip_cr:
+01131  DFFA  8D F1 CF      sta  acia_tx    ; emit char via transmit register
+01132  DFFD  38            sec             ; (by contract with callers)
+01133  DFFE  60            rts
+01134  ;-----------------------------------------------------;
+01135      .end vtl02c     ; set start address

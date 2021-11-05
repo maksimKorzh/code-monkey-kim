@@ -1,0 +1,733 @@
+ca65 V2.18 - Git 2acb3b15
+Main file   : miniFBAE.s
+Current file: miniFBAE.s
+
+000000r 1               ; Added:
+000000r 1               CR      =   $8D
+000000r 1               ESC     =   $9B
+000000r 1               BS      =   $DF   ; _
+000000r 1               PROMPT  =   $DC
+000000r 1               ; -----
+000000r 1               ;======================================
+000000r 1               ;    ** ENHANCED WOZMON EXTENSION **
+000000r 1               ;    MINI-ASSEMBLER AND DISASSEMBLER
+000000r 1               ;       FOR THE APPLE 1 COMPUTER
+000000r 1               ;  BASED ON THE CODE OF STEVE WOZNIAK
+000000r 1               ;       AND ALLEN BAUM, 1976/1977
+000000r 1               ; MANUALLY AND LOVINGLY ADAPTED BY THE
+000000r 1               ;    HAND OF MICHAEL T. BARRY, 2020
+000000r 1               ;    MODIFICATIONS MADE IN 2020 ARE
+000000r 1               ;     FREE TO USE WITH ATTRIBUTION
+000000r 1               ;        <<< 6502 FOREVER!! >>>
+000000r 1               ;======================================
+000000r 1               XAML     =   $14
+000000r 1               XAMH     =   $15
+000000r 1               STL      =   $16
+000000r 1               STH      =   $17
+000000r 1               L        =   $18   ;($35 ON A2)
+000000r 1               H        =   $19
+000000r 1               YSAV     =   $1A   ;($34 ON A2)
+000000r 1               MODE     =   $1B   ;($31 ON A2)
+000000r 1               ;
+000000r 1               FORMAT   =   $05
+000000r 1               LENGTH   =   $06
+000000r 1               FMT      =   $07
+000000r 1               LMNEM    =   $08
+000000r 1               RMNEM    =   $09
+000000r 1               PCL      =   $0A
+000000r 1               PCH      =   $0B
+000000r 1               A1L      =   $0C
+000000r 1               A1H      =   $0D
+000000r 1               A2L      =   $0E
+000000r 1               A2H      =   $0F
+000000r 1               A4L      =   $12
+000000r 1               A4H      =   $13
+000000r 1               ;
+000000r 1               IN       =   $0200
+000000r 1               ;
+000000r 1               KBD      =   $D010
+000000r 1               KBDCR    =   $D011
+000000r 1               DSP      =   $D012
+000000r 1               DSPCR    =   $D013
+000000r 1               
+000000r 1               ;ESCAPE   =   $3F1A
+000000r 1               ;
+000000r 1                        .ORG   $FBAE
+00FBAE  1               ;======================================
+00FBAE  1               LIST:             ; ($FE5E ON A2)
+00FBAE  1  A9 14           LDA   #20      ; DISASSEM 20 INSTR
+00FBB0  1               LIST1:
+00FBB0  1  48              PHA            ; STACK LOOP COUNTER
+00FBB1  1  20 21 FD        JSR   INSTDSP  ; DISASSEM ONE INSTR
+00FBB4  1  20 E5 FD        JSR   PCADJ    ; UPDATE VIRTUAL PC
+00FBB7  1  85 0A           STA   PCL      ;
+00FBB9  1  84 0B           STY   PCH      ;
+00FBBB  1  68              PLA            ; UPDATE LOOP COUNTER
+00FBBC  1  38              SEC            ;
+00FBBD  1  E9 01           SBC   #1       ;
+00FBBF  1  D0 EF           BNE   LIST1    ; LOOP FOR 20 INSTRS
+00FBC1  1               CMDLINE:
+00FBC1  1  20 AC FD        JSR   GETLNZ   ; INPUT A FRESH LINE
+00FBC4  1  8A              TXA            ; NULL INPUT?
+00FBC5  1  D0 03           BNE   CMDLIN2  ;
+00FBC7  1  4C 1A FF        JMP   ESCAPE   ; YES: BACK TO WOZMON
+00FBCA  1               CMDLIN2:
+00FBCA  1  A0 00           LDY   #0       ; START AT 1ST CHAR
+00FBCC  1  20 F4 FD        JSR   GETNUM   ; PARSE OPTIONAL ADDR
+00FBCF  1  48              PHA            ;
+00FBD0  1  8A              TXA            ; EMPTY ADDR FIELD?
+00FBD1  1  F0 07           BEQ   CMDLIN3  ; YES: USE DEFAULT PC
+00FBD3  1               A1PCLP:
+00FBD3  1  B5 0C           LDA   A1L,X    ; ASSUMES X=1
+00FBD5  1  95 0A           STA   PCL,X    ; COPY FROM A1 TO PC
+00FBD7  1  CA              DEX            ;
+00FBD8  1  10 F9           BPL   A1PCLP   ;
+00FBDA  1               CMDLIN3:
+00FBDA  1  68              PLA            ;
+00FBDB  1  C9 05           CMP   #$05     ; 'L' COMMAND?
+00FBDD  1  F0 CF           BEQ   LIST     ; YES: DISASSEMBLE
+00FBDF  1  C9 99           CMP   #$99     ; ' ' COMMAND?
+00FBE1  1  F0 04           BEQ   ASSEM    ; YES: ASM AT CURR PC
+00FBE3  1  C9 93           CMP   #$93     ; ':' COMMAND?
+00FBE5  1  D0 76           BNE   FORM8A   ; NO: ERROR
+00FBE7  1               ASSEM:
+00FBE7  1  A9 03           LDA   #3       ; # OF CHARS IN MNEM
+00FBE9  1  85 0D           STA   A1H      ;
+00FBEB  1               NXTMN:
+00FBEB  1  20 D4 FD        JSR   GETNSP   ; GET A MNEM CHAR
+00FBEE  1               NXTM:
+00FBEE  1  0A              ASL            ;
+00FBEF  1  E9 BE           SBC   #$BE     ; SUBTRACT OFFSET
+00FBF1  1  C9 C2           CMP   #$C2     ; LEGAL CHAR?
+00FBF3  1  90 68           BCC   FORM8A   ; NO
+00FBF5  1  0A              ASL            ; COMPRESS/LT-JUSTIFY
+00FBF6  1  0A              ASL            ;
+00FBF7  1  A2 04           LDX   #4       ;
+00FBF9  1               NXTM2:
+00FBF9  1  0A              ASL            ; DO 5 24-BIT SHIFTS
+00FBFA  1  26 12           ROL   A4L      ;
+00FBFC  1  26 13           ROL   A4H      ;
+00FBFE  1  CA              DEX            ;
+00FBFF  1  10 F8           BPL   NXTM2    ;
+00FC01  1  C6 0D           DEC   A1H      ; DONE WITH 3 CHARS?
+00FC03  1  F0 F4           BEQ   NXTM2    ; YES: ONE LAST SHIFT
+00FC05  1  10 E4           BPL   NXTMN    ; NO
+00FC07  1               FORM1:
+00FC07  1  A2 05           LDX   #5       ; 5 CHARS IN ADR MODE
+00FC09  1               FORM2:
+00FC09  1  20 D4 FD        JSR   GETNSP   ; GET 1ST CHR OF ADDR
+00FC0C  1  84 1A           STY   YSAV     ;
+00FC0E  1  DD 74 FE        CMP   CHR1,X   ; 1ST CHR MATCH PATT?
+00FC11  1  D0 13           BNE   FORM3    ; NO
+00FC13  1  20 D4 FD        JSR   GETNSP   ; YES: GET 2ND CHAR
+00FC16  1  DD 7A FE        CMP   CHR2,X   ; MATCHES 2ND HALF?
+00FC19  1  F0 0D           BEQ   FORM5    ; YES
+00FC1B  1  BD 7A FE        LDA   CHR2,X   ; NO: IS 2ND HALF 0?
+00FC1E  1  F0 07           BEQ   FORM4    ; YES
+00FC20  1  C9 A4           CMP   #$A4     ; NO: 2ND HALF OPT?
+00FC22  1  F0 03           BEQ   FORM4    ; YES
+00FC24  1  A4 1A           LDY   YSAV     ;
+00FC26  1               FORM3:
+00FC26  1  18              CLC            ; CLEAR BIT-NO MATCH
+00FC27  1               FORM4:
+00FC27  1  88              DEY            ; BACK UP 1 CHAR
+00FC28  1               FORM5:
+00FC28  1  26 07           ROL   FMT      ; FORM FORMAT BYTE
+00FC2A  1  E0 03           CPX   #3       ; TIME TO CHECK ADDR?
+00FC2C  1  D0 0D           BNE   FORM7    ; NO
+00FC2E  1  20 F4 FD        JSR   GETNUM   ; YES: PARSE IT
+00FC31  1  A5 0F           LDA   A2H      ;
+00FC33  1  F0 01           BEQ   FORM6    ; HIGH-ORDER BYTE 0?
+00FC35  1  E8              INX            ; NO: INCR FOR 2-BYTE
+00FC36  1               FORM6:
+00FC36  1  86 18           STX   L        ; STORE LENGTH
+00FC38  1  A2 03           LDX   #3       ; RELOAD FMT INDEX
+00FC3A  1  88              DEY            ; BACK UP 1 CHAR
+00FC3B  1               FORM7:
+00FC3B  1  86 0D           STX   A1H      ; SAVE INDEX
+00FC3D  1  CA              DEX            ; DONE W/FMT CHECK?
+00FC3E  1  10 C9           BPL   FORM2    ; NO
+00FC40  1  A5 07           LDA   FMT      ; YES: PUT LENGTH
+00FC42  1  0A              ASL            ;   IN LOW BITS
+00FC43  1  0A              ASL            ;
+00FC44  1  05 18           ORA   L        ;
+00FC46  1  C9 20           CMP   #$20     ;
+00FC48  1  B0 06           BCS   FORM8    ;
+00FC4A  1  A6 18           LDX   L        ;
+00FC4C  1  F0 02           BEQ   FORM8    ;
+00FC4E  1  09 80           ORA   #$80     ;
+00FC50  1               FORM8:
+00FC50  1  85 07           STA   FMT      ;
+00FC52  1  84 1A           STY   YSAV     ;
+00FC54  1  B9 00 02        LDA   IN,Y     ; GET NEXT NONBLANK
+00FC57  1  C9 BB           CMP   #$BB     ; START OF COMMENT?{;}
+00FC59  1  F0 04           BEQ   TRYNEXT  ; YES
+00FC5B  1  C9 8D           CMP   #CR      ; CR?
+00FC5D  1               FORM8A:
+00FC5D  1  D0 2C           BNE   ERR2     ; NO: ERROR
+00FC5F  1               TRYNEXT:          ; ($F55C ON A2)
+00FC5F  1  A5 0D           LDA   A1H      ; GET TRIAL OPCODE
+00FC61  1  20 DB FC        JSR   INSDS2   ; GET FMT+LEN FOR IT
+00FC64  1  AA              TAX            ;
+00FC65  1  BD C0 FE        LDA   MNEMR,X  ; GET LOWER MNEM BYTE
+00FC68  1  C5 12           CMP   A4L      ; MATCH?
+00FC6A  1  D0 13           BNE   NEXTOP   ; NO: TRY NEXT OPCODE
+00FC6C  1  BD 80 FE        LDA   MNEML,X  ; GET UPPER MNEM BYTE
+00FC6F  1  C5 13           CMP   A4H      ; MATCH?
+00FC71  1  D0 0C           BNE   NEXTOP   ; NO: TRY NEXT OPCODE
+00FC73  1  A5 07           LDA   FMT      ;
+00FC75  1  A4 05           LDY   FORMAT   ; GET TRIAL FORMAT
+00FC77  1  C0 9D           CPY   #$9D     ; IS IT RELATIVE?
+00FC79  1  F0 20           BEQ   REL      ; YES
+00FC7B  1  C5 05           CMP   FORMAT   ; SAME FORMAT?
+00FC7D  1  F0 37           BEQ   FINDOP   ; YES
+00FC7F  1               NEXTOP:
+00FC7F  1  C6 0D           DEC   A1H      ; NO: TRY NEXT OPCODE
+00FC81  1  D0 DC           BNE   TRYNEXT  ;
+00FC83  1  E6 07           INC   FMT      ; NO MORE: TRY LEN=2
+00FC85  1  C6 18           DEC   L        ; WAS L=2 ALREADY?
+00FC87  1  F0 D6           BEQ   TRYNEXT  ; NO: KEEP TRYING
+00FC89  1               ERR:
+00FC89  1  A4 1A           LDY   YSAV     ; YES: UNREC. INST
+00FC8B  1               ERR2:
+00FC8B  1  98              TYA            ;
+00FC8C  1  AA              TAX            ;
+00FC8D  1  20 E0 FD        JSR   CROUT    ;
+00FC90  1  20 CB FD        JSR   PRXBL    ; PRINT '^' BELOW THE
+00FC93  1  A9 DE           LDA   #$DE     ;   LAST PARSED CHAR{^}
+00FC95  1  20 EF FF        JSR   ECHO     ;   TO SHOW ERR POSN
+00FC98  1  4C C1 FB        JMP   CMDLINE  ; NEXT COMMAND LINE
+00FC9B  1               REL:
+00FC9B  1  E9 81           SBC   #$81     ; YES: IS FMT COMPAT
+00FC9D  1  4A              LSR            ;   W/RELATIVE MODE?
+00FC9E  1  D0 E9           BNE   ERR      ; NO: ERROR OUT
+00FCA0  1  A4 0F           LDY   A2H      ;
+00FCA2  1  A6 0E           LDX   A2L      ; DOUBLE DECREMENT
+00FCA4  1  D0 01           BNE   REL2     ;
+00FCA6  1  88              DEY            ;
+00FCA7  1               REL2:
+00FCA7  1  CA              DEX            ;
+00FCA8  1  8A              TXA            ;
+00FCA9  1  18              CLC            ;
+00FCAA  1  E5 0A           SBC   PCL      ; CALC ADDR-PC-2
+00FCAC  1  85 0E           STA   A2L      ;
+00FCAE  1  10 01           BPL   REL3     ;
+00FCB0  1  C8              INY            ;
+00FCB1  1               REL3:
+00FCB1  1  98              TYA            ;
+00FCB2  1  E5 0B           SBC   PCH      ;
+00FCB4  1  D0 D3           BNE   ERR      ; ERROR IF TOO FAR
+00FCB6  1               FINDOP:
+00FCB6  1  A4 06           LDY   LENGTH   ;
+00FCB8  1               FNDOP2:
+00FCB8  1  B9 0D 00        LDA   A1H,Y    ; MOVE INST TO (PC)
+00FCBB  1  91 0A           STA   (PCL),Y  ;
+00FCBD  1  88              DEY            ;
+00FCBE  1  10 F8           BPL   FNDOP2   ;
+00FCC0  1  A9 01           LDA   #1       ; DISASSEMBLE RESULT
+00FCC2  1  4C B0 FB        JMP   LIST1    ; BACK TO CMD LINE
+00FCC5  1               ;=  92 ================================
+00FCC5  1               INSDS1:           ; ($F882 ON A2)
+00FCC5  1  A6 0A           LDX   PCL      ; PRINT PCL,H
+00FCC7  1  A4 0B           LDY   PCH      ;
+00FCC9  1  20 E0 FD        JSR   CROUT    ;
+00FCCC  1  20 91 FD        JSR   PRNTYX   ;
+00FCCF  1  A0 00           LDY   #0       ;
+00FCD1  1  A9 AD           LDA   #$AD     ; PRINT '-'
+00FCD3  1  20 EF FF        JSR   ECHO     ;
+00FCD6  1  20 C9 FD        JSR   PR3BL    ; PRINT 3 BLANKS
+00FCD9  1  A1 0A           LDA   (PCL,X)  ; GET OPCODE
+00FCDB  1               INSDS2:           ; ($F88E ON A2)
+00FCDB  1  A8              TAY            ;
+00FCDC  1  4A              LSR            ; EVEN/ODD TEST
+00FCDD  1  90 0B           BCC   IEVEN    ;
+00FCDF  1  4A              LSR            ; BIT 1 TEST
+00FCE0  1  09 80           ORA   #$80     ;   (BECAUSE ROR BUG)
+00FCE2  1  B0 15           BCS   INVLD    ; XXXXXX11 INVALID OP
+00FCE4  1  C9 A2           CMP   #$A2     ;
+00FCE6  1  F0 11           BEQ   INVLD    ; OPCODE $89 INVALID
+00FCE8  1  29 87           AND   #$87     ; MASK BITS
+00FCEA  1               IEVEN:            ; ($F89B ON A2)
+00FCEA  1  4A              LSR            ; LSB->C FOR L/R TEST
+00FCEB  1  AA              TAX            ;
+00FCEC  1  BD 22 FE        LDA   FMT1,X   ; GET FMT INDEX BYTE
+00FCEF  1  90 04           BCC   RTMSKZ   ; R/L H-BYTE ON CARRY
+00FCF1  1  4A              LSR            ;
+00FCF2  1  4A              LSR            ;
+00FCF3  1  4A              LSR            ;
+00FCF4  1  4A              LSR            ;
+00FCF5  1               RTMSKZ:
+00FCF5  1  29 0F           AND   #$0F     ;
+00FCF7  1  D0 04           BNE   GETFMT   ;
+00FCF9  1               INVLD:
+00FCF9  1  A0 80           LDY   #$80     ; SUB $80 FOR INVALID
+00FCFB  1  A9 00           LDA   #0       ; SET PRINT FMT INDEX
+00FCFD  1               GETFMT:           ; ($F8A9 ON A2)
+00FCFD  1  AA              TAX            ;
+00FCFE  1  BD 66 FE        LDA   FMT2,X   ; INDX INTO FMT TABLE
+00FD01  1  85 05           STA   FORMAT   ; SAVE FOR ADR FLD
+00FD03  1  29 03           AND   #$03     ; MASK FOR 2-BIT LEN
+00FD05  1  85 06           STA   LENGTH   ;
+00FD07  1  98              TYA            ; OPCODE
+00FD08  1  29 8F           AND   #$8F     ; MASK: 1XXX1010 TEST
+00FD0A  1  AA              TAX            ; SAVE IT
+00FD0B  1  98              TYA            ; OPCODE TO A AGAIN
+00FD0C  1  A0 03           LDY   #$03     ;
+00FD0E  1  E0 8A           CPX   #$8A     ;
+00FD10  1  F0 0B           BEQ   MNNDX3   ;
+00FD12  1               MNNDX1:
+00FD12  1  4A              LSR            ;
+00FD13  1  90 08           BCC   MNNDX3   ; FORM IDX INTO MNEM
+00FD15  1  4A              LSR            ;
+00FD16  1               MNNDX2:
+00FD16  1  4A              LSR            ; 1 1XXX1010>00101XXX
+00FD17  1  09 20           ORA   #$20     ; 2 XXXYYY01>00111XXX
+00FD19  1  88              DEY            ; 3 XXXYYY10>00110XXX
+00FD1A  1  D0 FA           BNE   MNNDX2   ; 4 XXXYY100>00100XXX
+00FD1C  1  C8              INY            ; 5 XXXXX000>000XXXXX
+00FD1D  1               MNNDX3:
+00FD1D  1  88              DEY            ;
+00FD1E  1  D0 F2           BNE   MNNDX1   ;
+00FD20  1  60              RTS            ;
+00FD21  1               ;= 120 ================================
+00FD21  1               INSTDSP:          ; ($F8D0 ON A2)
+00FD21  1  20 C5 FC        JSR   INSDS1   ; GEN FMT, LEN BYTES
+00FD24  1  48              PHA            ; SAVE MNEM TABLE IDX
+00FD25  1               PRNTOP:
+00FD25  1  B1 0A           LDA   (PCL),Y  ;
+00FD27  1  20 DC FF        JSR   PRBYTE   ;
+00FD2A  1  A2 01           LDX   #1       ; PRINT 2 BLANKS
+00FD2C  1               PRNTBL:
+00FD2C  1  20 CB FD        JSR   PRXBL    ;
+00FD2F  1  C4 06           CPY   LENGTH   ; PRINT INSTRUCTION
+00FD31  1  C8              INY            ; IN A 12 CHAR FIELD
+00FD32  1  90 F1           BCC   PRNTOP   ;
+00FD34  1  A2 03           LDX   #3       ; MNEM CHAR COUNT
+00FD36  1  C0 04           CPY   #4       ;
+00FD38  1  90 F2           BCC   PRNTBL   ;
+00FD3A  1  68              PLA            ; RECOVER MNEM INDEX
+00FD3B  1  A8              TAY            ;
+00FD3C  1  B9 80 FE        LDA   MNEML,Y  ;
+00FD3F  1  85 08           STA   LMNEM    ; FETCH 3-CHAR MNEM
+00FD41  1  B9 C0 FE        LDA   MNEMR,Y  ;   PACKED IN 2-BYTES
+00FD44  1  85 09           STA   RMNEM    ;
+00FD46  1               PRMN1:
+00FD46  1  A9 00           LDA   #0       ;
+00FD48  1  A0 05           LDY   #5       ;
+00FD4A  1               PRMN2:
+00FD4A  1  06 09           ASL   RMNEM    ; SHIFT 5 BITS OF
+00FD4C  1  26 08           ROL   LMNEM    ;   CHARACTER INTO A
+00FD4E  1  2A              ROL            ;     (CLEARS CARRY)
+00FD4F  1  88              DEY            ;
+00FD50  1  D0 F8           BNE   PRMN2    ;
+00FD52  1  69 BF           ADC   #$BF     ; ADD "?" OFFSET {?}
+00FD54  1  20 EF FF        JSR   ECHO     ; SEND A CHAR OF MNEM
+00FD57  1  CA              DEX            ;
+00FD58  1  D0 EC           BNE   PRMN1    ;
+00FD5A  1  20 C9 FD        JSR   PR3BL    ; PRINT 3 BLANKS
+00FD5D  1  A4 06           LDY   LENGTH   ;
+00FD5F  1  A2 06           LDX   #6       ; CNT FOR 6 FMT BITS
+00FD61  1               PRADR1:
+00FD61  1  E0 03           CPX   #3       ;
+00FD63  1  F0 1C           BEQ   PRADR5   ; IF X=3 THEN ADDR
+00FD65  1               PRADR2:
+00FD65  1  06 05           ASL   FORMAT   ;
+00FD67  1  90 0E           BCC   PRADR3   ;
+00FD69  1  BD 73 FE        LDA   CHR1-1,X ;
+00FD6C  1  20 EF FF        JSR   ECHO     ;
+00FD6F  1  BD 79 FE        LDA   CHR2-1,X ;
+00FD72  1  F0 03           BEQ   PRADR3   ;
+00FD74  1  20 EF FF        JSR   ECHO     ;
+00FD77  1               PRADR3:
+00FD77  1  CA              DEX            ;
+00FD78  1  D0 E7           BNE   PRADR1   ;
+00FD7A  1  60              RTS            ;
+00FD7B  1               PRADR4:
+00FD7B  1  88              DEY            ;
+00FD7C  1  30 E7           BMI   PRADR2   ;
+00FD7E  1  20 DC FF        JSR   PRBYTE   ;
+00FD81  1               PRADR5:
+00FD81  1  A5 05           LDA   FORMAT   ;
+00FD83  1  C9 E8           CMP   #$E8     ; HANDLE REL ADR MODE
+00FD85  1  B1 0A           LDA   (PCL),Y  ; SPECIAL (SND TARGET
+00FD87  1  90 F2           BCC   PRADR4   ;   ADDR, NOT OFFSET)
+00FD89  1  20 E8 FD        JSR   PCADJ3   ;
+00FD8C  1  AA              TAX            ; PCL,H+OFFSET+1
+00FD8D  1  E8              INX            ;   TO A,Y
+00FD8E  1  D0 01           BNE   PRNTYX   ; +1 TO Y,X
+00FD90  1  C8              INY            ;
+00FD91  1               PRNTYX:
+00FD91  1  98              TYA            ;
+00FD92  1               PRNTAX:
+00FD92  1  20 DC FF        JSR   PRBYTE   ; PRINT BRANCH TARGET
+00FD95  1  8A              TXA            ;
+00FD96  1  4C DC FF        JMP   PRBYTE   ;
+00FD99  1               ;=  48 ================================
+00FD99  1               NOTACR:
+00FD99  1  C9 9B           CMP   #ESC     ; ESC?
+00FD9B  1  F0 0A           BEQ   CANCEL   ; YES: START OVER
+00FD9D  1  20 EF FF        JSR   ECHO     ; PRINT CHAR
+00FDA0  1  C9 DF           CMP   #$DF     ; {_}
+00FDA2  1  F0 12           BEQ   BCKSPC   ;
+00FDA4  1  E8              INX            ;
+00FDA5  1  10 12           BPL   NXTCHAR  ; 128 CHARS MAX
+00FDA7  1               CANCEL:
+00FDA7  1  A9 DC           LDA   #$DC     ; {\}
+00FDA9  1  20 EF FF        JSR   ECHO     ;
+00FDAC  1               GETLNZ:           ; ($FD67 ON A2)
+00FDAC  1  20 E0 FD        JSR   CROUT    ; FRESH LINE
+00FDAF  1               GETLINE:
+00FDAF  1  A9 A1           LDA   #$A1     ; PROMPT CHAR {!}
+00FDB1  1  20 EF FF        JSR   ECHO     ;
+00FDB4  1  A2 01           LDX   #1       ;
+00FDB6  1               BCKSPC:
+00FDB6  1  CA              DEX            ;
+00FDB7  1  30 EE           BMI   CANCEL   ;
+00FDB9  1               NXTCHAR:
+00FDB9  1  2C 11 D0        BIT   KBDCR    ; WAIT FOR KEY PRESS
+00FDBC  1  10 FB           BPL   NXTCHAR  ; NO KEY YET
+00FDBE  1  AD 10 D0        LDA   KBD      ; LOAD CHAR
+00FDC1  1  9D 00 02        STA   IN,X     ; STORE IN BUFFER
+00FDC4  1  C9 8D           CMP   #CR      ; CR?
+00FDC6  1  D0 D1           BNE   NOTACR   ; NO: KEEP GOING
+00FDC8  1  60              RTS            ; YES: X=BUFLEN
+00FDC9  1               ;=  11 ================================
+00FDC9  1               PR3BL:            ; ($F948 ON A2)
+00FDC9  1  A2 03           LDX   #3       ; BLANK COUNT
+00FDCB  1               PRXBL:
+00FDCB  1  A9 A0           LDA   #$A0     ; LOAD A SPACE CHAR { }
+00FDCD  1  20 EF FF        JSR   ECHO     ; PRINT IT
+00FDD0  1  CA              DEX            ;
+00FDD1  1  D0 F8           BNE   PRXBL    ; LOOP UNTIL COUNT=0
+00FDD3  1  60              RTS            ;
+00FDD4  1               ;=   9 ================================
+00FDD4  1               GETNSP:           ; ($F634 ON A2)
+00FDD4  1  B9 00 02        LDA   IN,Y     ;
+00FDD7  1  C8              INY            ;
+00FDD8  1  C9 A0           CMP   #$A0     ; SKIP OVER SPACES { }
+00FDDA  1  F0 F8           BEQ   GETNSP   ;
+00FDDC  1  60              RTS            ;
+00FDDD  1               ;=   3 ================================
+00FDDD  1               XMON:             ;
+00FDDD  1  4C C1 FB        JMP   CMDLINE  ;
+00FDE0  1               ;=   5 ================================
+00FDE0  1               CROUT:            ; ($FD8E ON A2)
+00FDE0  1  A9 8D           LDA   #CR      ;
+00FDE2  1  4C EF FF        JMP   ECHO     ;
+00FDE5  1               ;=  15 ================================
+00FDE5  1               PCADJ:            ; ($F953 ON A2)
+00FDE5  1  38              SEC            ; 0=1-BYTE, 1=2-BYTE,
+00FDE6  1  A5 06           LDA   LENGTH   ;   2=3-BYTE INST
+00FDE8  1               PCADJ3:
+00FDE8  1  A4 0B           LDY   PCH      ;
+00FDEA  1  AA              TAX            ; TEST DISPLCMNT SIGN
+00FDEB  1  10 01           BPL   PCADJ4   ;   (FOR REL BRANCH)
+00FDED  1  88              DEY            ; EXT NEG BY DEC PCH
+00FDEE  1               PCADJ4:
+00FDEE  1  65 0A           ADC   PCL      ; PCL + LEN(DSPL) + 1
+00FDF0  1  90 01           BCC   PCADJ5   ;   TO A (PCL),
+00FDF2  1  C8              INY            ;   CARRY TO Y (PCH)
+00FDF3  1               PCADJ5:
+00FDF3  1  60              RTS            ;
+00FDF4  1               ;=  46 ================================
+00FDF4  1               GETNUM:           ; ($FFA7 ON A2)
+00FDF4  1  A2 00           LDX   #0       ; CLEAR VALID # FLAG
+00FDF6  1  86 0E           STX   A2L      ; CLEAR A2
+00FDF8  1  86 0F           STX   A2H      ;
+00FDFA  1  F0 15           BEQ   NXTCXAR  ;
+00FDFC  1               DIG:              ; ($FF8A ON A2)
+00FDFC  1  A2 03           LDX   #3       ;
+00FDFE  1  0A              ASL            ;
+00FDFF  1  0A              ASL            ; GOT HEX DIGIT,
+00FE00  1  0A              ASL            ;   SHIFT INTO A2
+00FE01  1  0A              ASL            ;
+00FE02  1               NXTBIT:
+00FE02  1  0A              ASL            ;
+00FE03  1  26 0E           ROL   A2L      ;
+00FE05  1  26 0F           ROL   A2H      ;
+00FE07  1  CA              DEX            ; LEAVE X=$FF IF DIG
+00FE08  1  10 F8           BPL   NXTBIT   ;
+00FE0A  1               NXTBAS:
+00FE0A  1  B5 0F           LDA   A2H,X    ; COPY A2 TO A1
+00FE0C  1  95 0D           STA   A1H,X    ;
+00FE0E  1               NXTBS2:
+00FE0E  1  E8              INX            ;
+00FE0F  1  F0 F9           BEQ   NXTBAS   ;
+00FE11  1               NXTCXAR:          ; ($FFAD ON A2)
+00FE11  1  B9 00 02        LDA   IN,Y     ; GET CHAR
+00FE14  1  C8              INY            ; ADVANCE INDEX
+00FE15  1  49 B0           EOR   #$B0     ;
+00FE17  1  C9 0A           CMP   #10      ; DECIMAL DIGIT?
+00FE19  1  90 E1           BCC   DIG      ; YES: ACCUMULATE
+00FE1B  1  69 88           ADC   #$88     ;
+00FE1D  1  C9 FA           CMP   #$FA     ; 'A'-'F'
+00FE1F  1  B0 DB           BCS   DIG      ; YES: ACCUMULATE
+00FE21  1  60              RTS            ; NO: RETURN WITH
+00FE22  1                                 ;   X=0: NO NUMBER
+00FE22  1                                 ;   X=1: NUMBER
+00FE22  1               ;= 222 ================================
+00FE22  1               FMT1:             ; ($F962 ON A2)
+00FE22  1               ; FMT1 BYTES: XXXXXXY0 INSTRS
+00FE22  1               ; IF Y=0 THEN LEFT HALF BYTE
+00FE22  1               ; IF Y=1 THEN RIGHT HALF BYTE
+00FE22  1               ; (X=INDEX)
+00FE22  1  04 20 54 30  .byte $04, $20 ,$54 ,$30 ,$0D ,$80 ,$04 ,$90
+00FE26  1  0D 80 04 90  
+00FE2A  1               
+00FE2A  1  03 22 54 33  .byte $03 ,$22 ,$54 ,$33 ,$0D ,$80 ,$04 ,$90
+00FE2E  1  0D 80 04 90  
+00FE32  1               
+00FE32  1  04 20 54 33  .byte $04 ,$20 ,$54 ,$33 ,$0D ,$80 ,$04 ,$90
+00FE36  1  0D 80 04 90  
+00FE3A  1               
+00FE3A  1  04 20 54 3B  .byte $04 ,$20 ,$54 ,$3B ,$0D ,$80 ,$04 ,$90
+00FE3E  1  0D 80 04 90  
+00FE42  1               
+00FE42  1  00 22 44 33  .byte $00 ,$22 ,$44 ,$33 ,$0D ,$C8 ,$44 ,$00
+00FE46  1  0D C8 44 00  
+00FE4A  1               
+00FE4A  1  11 22 44 33  .byte $11 ,$22 ,$44 ,$33 ,$0D ,$C8 ,$44 ,$A9
+00FE4E  1  0D C8 44 A9  
+00FE52  1               
+00FE52  1  01 22 44 33  .byte $01 ,$22 ,$44 ,$33 ,$0D ,$80 ,$04 ,$90
+00FE56  1  0D 80 04 90  
+00FE5A  1               
+00FE5A  1  01 22 44 33  .byte $01 ,$22 ,$44 ,$33 ,$0D ,$80 ,$04 ,$90
+00FE5E  1  0D 80 04 90  
+00FE62  1               
+00FE62  1               ; $ZZXXXY01 INSTRS
+00FE62  1  26 31 87 9A  .byte $26 ,$31 ,$87 ,$9A
+00FE66  1               FMT2:             ; ($F9A6 ON A2)
+00FE66  1               ; ERR IMM ZP ABS IMP ACC (ZP,X) (ZP),Y
+00FE66  1               ; ZP,X ABS,X ABS,Y (ABS) ZP,Y REL
+00FE66  1  00 21 81 82  .byte $00 ,$21 ,$81 ,$82 ,$00 ,$00 ,$59 ,$4D
+00FE6A  1  00 00 59 4D  
+00FE6E  1               
+00FE6E  1  91 92 86 4A  .byte $91 ,$92 ,$86 ,$4A ,$85 ,$9D
+00FE72  1  85 9D        
+00FE74  1               
+00FE74  1               CHR1:             ; ($F9B4 ON A2)
+00FE74  1               ; ",),#($"
+00FE74  1  AC A9 AC A3  .byte $AC ,$A9 ,$AC ,$A3 ,$A8 ,$A4
+00FE78  1  A8 A4        
+00FE7A  1               
+00FE7A  1               CHR2:             ; ($F9BA ON A2)
+00FE7A  1               ; "Y",0,"X$$",0
+00FE7A  1  D9 00 D8 A4  .byte $D9 ,$00 ,$D8 ,$A4 ,$A4 ,$00
+00FE7E  1  A4 00        
+00FE80  1               
+00FE80  1               MNEML:            ; ($F9C0 ON A2)
+00FE80  1               ; MNEML IS OF FORM:
+00FE80  1               ; (A) XXXXX000
+00FE80  1               ; (B) XXXYY100
+00FE80  1               ; (C) 1XXX1010
+00FE80  1               ; (D) XXXYYY10
+00FE80  1               ; (E) XXXYYY01
+00FE80  1               ; (X=INDEX)
+00FE80  1  1C 8A 1C 23  .byte $1C ,$8A ,$1C ,$23 ,$5D ,$8B ,$1B ,$A1
+00FE84  1  5D 8B 1B A1  
+00FE88  1               
+00FE88  1  9D 8A 1D 23  .byte $9D ,$8A ,$1D ,$23 ,$9D ,$8B ,$1D ,$A1
+00FE8C  1  9D 8B 1D A1  
+00FE90  1               
+00FE90  1  00 29 19 AE  .byte $00 ,$29 ,$19 ,$AE ,$69 ,$A8 ,$19 ,$23
+00FE94  1  69 A8 19 23  
+00FE98  1               
+00FE98  1  24 53 1B 23  .byte $24 ,$53 ,$1B ,$23 ,$24 ,$53 ,$19 ,$A1
+00FE9C  1  24 53 19 A1  
+00FEA0  1               
+00FEA0  1  00 1A 5B 5B  .byte $00 ,$1A ,$5B ,$5B ,$A5 ,$69 ,$24 ,$24
+00FEA4  1  A5 69 24 24  
+00FEA8  1               
+00FEA8  1  AE AE A8 AD  .byte $AE ,$AE ,$A8 ,$AD ,$29 ,$00 ,$7C ,$00
+00FEAC  1  29 00 7C 00  
+00FEB0  1               
+00FEB0  1  15 9C 6D 9C  .byte $15 ,$9C ,$6D ,$9C ,$A5 ,$69 ,$29 ,$53
+00FEB4  1  A5 69 29 53  
+00FEB8  1               
+00FEB8  1  84 13 34 11  .byte $84 ,$13 ,$34 ,$11 ,$A5 ,$69 ,$23 ,$A0
+00FEBC  1  A5 69 23 A0  
+00FEC0  1               
+00FEC0  1               MNEMR:
+00FEC0  1  D8 62 5A 48  .byte $D8 ,$62 ,$5A ,$48 ,$26 ,$62 ,$94 ,$88
+00FEC4  1  26 62 94 88  
+00FEC8  1               
+00FEC8  1  54 44 C8 54  .byte $54 ,$44 ,$C8 ,$54 ,$68 ,$44 ,$E8 ,$94
+00FECC  1  68 44 E8 94  
+00FED0  1               
+00FED0  1  00 B4 08 84  .byte $00 ,$B4 ,$08 ,$84 ,$74 ,$B4 ,$28 ,$6E
+00FED4  1  74 B4 28 6E  
+00FED8  1               
+00FED8  1  74 F4 CC 4A  .byte $74 ,$F4 ,$CC ,$4A ,$72 ,$F2 ,$A4 ,$8A
+00FEDC  1  72 F2 A4 8A  
+00FEE0  1               
+00FEE0  1  00 AA A2 A2  .byte $00 ,$AA ,$A2 ,$A2 ,$74 ,$74 ,$74 ,$72
+00FEE4  1  74 74 74 72  
+00FEE8  1               
+00FEE8  1  44 68 B2 32  .byte $44 ,$68 ,$B2 ,$32 ,$B2 ,$00 ,$22 ,$00
+00FEEC  1  B2 00 22 00  
+00FEF0  1               
+00FEF0  1  1A 1A 26 26  .byte $1A ,$1A ,$26 ,$26 ,$72 ,$72 ,$88 ,$C8
+00FEF4  1  72 72 88 C8  
+00FEF8  1               
+00FEF8  1  C4 CA 26 48  .byte $C4 ,$CA ,$26 ,$48 ,$44 ,$44 ,$A2 ,$C8
+00FEFC  1  44 44 A2 C8  
+00FF00  1               
+00FF00  1               ;======================================
+00FF00  1               ; WOZMON
+00FF00  1               RESET:
+00FF00  1  D8              CLD            ; CLEAR DECIMAL MODE
+00FF01  1  58              CLI            ; ENABLE INTERRUPTS
+00FF02  1  A0 7F           LDY   #$7F     ; DSP DIRECTION MASK
+00FF04  1  8C 12 D0        STY   DSP      ; (DDR MODE ASSUMED)
+00FF07  1  A9 A7           LDA   #$A7     ; KBD & DSP CTRL MASK
+00FF09  1  8D 11 D0        STA   KBDCR    ; ENABLE IRQS, SET
+00FF0C  1  8D 13 D0        STA   DSPCR    ;  CA1,CB1 FOR POS
+00FF0F  1                                 ; EDGE SENSE/OUT MODE
+00FF0F  1               NOTCR:
+00FF0F  1  C9 DF           CMP   #BS      ; BACKSPACE KEY?
+00FF11  1  F0 13           BEQ   BACKSP   ;
+00FF13  1  C9 9B           CMP   #ESC     ; ESC KEY?
+00FF15  1  F0 03           BEQ   ESCAPE   ;
+00FF17  1  C8              INY            ; ADVANCE TEXT INDEX
+00FF18  1  10 0F           BPL   NXTCHR   ; ESC IF LINE TOO BIG
+00FF1A  1               ESCAPE:
+00FF1A  1  A9 DC           LDA   #PROMPT  ; PRINT PROMPT CHAR
+00FF1C  1  20 EF FF        JSR   ECHO     ;
+00FF1F  1               GETLIN:
+00FF1F  1  A9 8D           LDA   #CR      ; PRINT CR
+00FF21  1  20 EF FF        JSR   ECHO     ;
+00FF24  1  A0 01           LDY   #1       ; START NEW LINE
+00FF26  1               BACKSP:
+00FF26  1  88              DEY            ; BACK UP INDEX
+00FF27  1  30 F6           BMI   GETLIN   ; REINIT IF EMPTY
+00FF29  1               NXTCHR:
+00FF29  1  AD 11 D0        LDA   KBDCR    ; WAIT FOR KEY PRESS
+00FF2C  1  10 FB           BPL   NXTCHR   ; NO KEY YET
+00FF2E  1  AD 10 D0        LDA   KBD      ; LOAD CHAR
+00FF31  1  99 00 02        STA   IN,Y     ; ADD TO TEXT BUFFER
+00FF34  1  20 EF FF        JSR   ECHO     ; PRINT CHAR
+00FF37  1  C9 8D           CMP   #CR      ;
+00FF39  1  D0 D4           BNE   NOTCR    ;
+00FF3B  1  A0 FF           LDY   #$FF     ;
+00FF3D  1  A9 00           LDA   #0       ; DEFAULT MODE IS XAM
+00FF3F  1  AA              TAX            ;
+00FF40  1               STSTOR:
+00FF40  1  0A              ASL            ;
+00FF41  1               STMODE:
+00FF41  1  85 1B           STA   MODE     ; SET MODE FLAGS
+00FF43  1               BLSKIP:
+00FF43  1  C8              INY            ; ADVANCE TEXT INDEX
+00FF44  1               NXTITM:
+00FF44  1  B9 00 02        LDA   IN,Y     ; GET CHAR
+00FF47  1  C9 8D           CMP   #CR      ;
+00FF49  1  F0 D4           BEQ   GETLIN   ; DONE IF CR
+00FF4B  1  C9 AE           CMP   #$AE     ; {.}
+00FF4D  1  90 F4           BCC   BLSKIP   ; IGNORE CHAR < "."
+00FF4F  1  F0 F0           BEQ   STMODE   ; SET BLOCK XAM MODE
+00FF51  1  C9 BA           CMP   #$BA     ; {:}
+00FF53  1  F0 EB           BEQ   STSTOR   ; SET STOR MODE
+00FF55  1  C9 D2           CMP   #$D2     ;{R}
+00FF57  1  F0 3B           BEQ   RUN      ; RUN THE PROGRAM
+00FF59  1  86 18           STX   L        ; CLEAR INPUT VALUE
+00FF5B  1  86 19           STX   H        ;
+00FF5D  1  84 1A           STY   YSAV     ; SAVE Y FOR COMPARE
+00FF5F  1               NXTHEX:           ; (OV ADDED)
+00FF5F  1  B9 00 02        LDA   IN,Y     ; GET CHR FOR HEX TST
+00FF62  1  49 B0           EOR   #$B0     ; MAP DIGITS TO 0-9
+00FF64  1  C9 0A           CMP   #10      ; DECIMAL DIGIT?
+00FF66  1  90 06           BCC   DIGX
+00FF68  1  69 88           ADC   #$88     ; "A"-"F" -> $FA-FF
+00FF6A  1  C9 FA           CMP   #$FA     ; HEX LETTER?
+00FF6C  1  90 11           BCC   NOTHEX   ;
+00FF6E  1               DIGX:
+00FF6E  1  0A              ASL            ;
+00FF6F  1  0A              ASL            ;
+00FF70  1  0A              ASL            ;
+00FF71  1  0A              ASL            ;
+00FF72  1  A2 04           LDX   #4       ;
+00FF74  1               HXSHIF:
+00FF74  1  0A              ASL            ;
+00FF75  1  26 18           ROL   L        ;
+00FF77  1  26 19           ROL   H        ;
+00FF79  1  CA              DEX            ;
+00FF7A  1  D0 F8           BNE   HXSHIF   ;
+00FF7C  1  C8              INY            ;
+00FF7D  1  D0 E0           BNE   NXTHEX   ; NXTHEX, D0 E0
+00FF7F  1               NOTHEX:
+00FF7F  1  C4 1A           CPY   YSAV     ;
+00FF81  1  F0 97           BEQ   ESCAPE   ;
+00FF83  1  24 1B           BIT   MODE     ;
+00FF85  1  50 10           BVC   NOTSTO   ;
+00FF87  1  A5 18           LDA   L        ;
+00FF89  1  81 16           STA   (STL,X)  ;
+00FF8B  1  E6 16           INC   STL      ;
+00FF8D  1  D0 B5           BNE   NXTITM   ;
+00FF8F  1  E6 17           INC   STH      ;
+00FF91  1               TONEXT:
+00FF91  1  4C 44 FF        JMP   NXTITM   ;
+00FF94  1               RUN:              ; RUN USER'S PROGRAM
+00FF94  1  6C 14 00        JMP   (XAML)
+00FF97  1               NOTSTO:
+00FF97  1  30 2B           BMI   XAMNXT   ; XAMNXT, 30 2B
+00FF99  1  A2 02           LDX   #2       ; COPY 2 BYTES
+00FF9B  1               SETADR:
+00FF9B  1  B5 17           LDA   L-1,X
+00FF9D  1  95 15           STA   STL-1,X
+00FF9F  1  95 13           STA   XAML-1,X
+00FFA1  1  CA              DEX
+00FFA2  1  D0 F7           BNE   SETADR
+00FFA4  1               NXTPRN:           ; PRINT ADDR AND DATA
+00FFA4  1  D0 14           BNE   PRDATA
+00FFA6  1  A9 8D           LDA   #$8D
+00FFA8  1  20 EF FF        JSR   ECHO
+00FFAB  1  A5 15           LDA   XAMH
+00FFAD  1  20 DC FF        JSR   PRBYTE
+00FFB0  1  A5 14           LDA   XAML
+00FFB2  1  20 DC FF        JSR   PRBYTE
+00FFB5  1  A9 BA           LDA   #$BA     ;':'
+00FFB7  1  20 EF FF        JSR   ECHO
+00FFBA  1               PRDATA:
+00FFBA  1  A9 A0           LDA   #$A0     ;' '
+00FFBC  1  20 EF FF        JSR   ECHO
+00FFBF  1  A1 14           LDA   (XAML,X)
+00FFC1  1  20 DC FF        JSR   PRBYTE
+00FFC4  1               XAMNXT:
+00FFC4  1  86 1B           STX   MODE
+00FFC6  1  A5 14           LDA   XAML
+00FFC8  1  C5 18           CMP   L
+00FFCA  1  A5 15           LDA   XAMH
+00FFCC  1  E5 19           SBC   H
+00FFCE  1  B0 C1           BCS   TONEXT
+00FFD0  1  E6 14           INC   XAML
+00FFD2  1  D0 02           BNE   MD8CHK
+00FFD4  1  E6 15           INC   XAMH
+00FFD6  1               MD8CHK:
+00FFD6  1  A5 14           LDA   XAML
+00FFD8  1  29 07           AND   #$07
+00FFDA  1  10 C8           BPL   NXTPRN
+00FFDC  1               PRBYTE:
+00FFDC  1  48              PHA            ; PRINT A AS HEX BYTE
+00FFDD  1  4A              LSR            ; (DESTRUCTIVE)
+00FFDE  1  4A              LSR
+00FFDF  1  4A              LSR
+00FFE0  1  4A              LSR
+00FFE1  1  20 E5 FF        JSR   PRHEX
+00FFE4  1  68              PLA
+00FFE5  1               PRHEX:
+00FFE5  1  29 0F           AND   #$0F     ; PRINT A AS HEX DIG
+00FFE7  1  09 B0           ORA   #$B0     ; '0'
+00FFE9  1  C9 BA           CMP   #$BA     ; '9'+1
+00FFEB  1  90 02           BCC   ECHO
+00FFED  1  69 06           ADC   #6
+00FFEF  1               ECHO:
+00FFEF  1  2C 12 D0        BIT   DSP      ; PRINT A AS ASCII
+00FFF2  1  30 FB           BMI   ECHO
+00FFF4  1  8D 12 D0        STA   DSP
+00FFF7  1  60              RTS
+00FFF8  1               ;
+00FFF8  1  FF FF 00 0F  .byte $FF ,$FF ,$00 ,$0F ,$00 ,$FF ,$00 ,$00
+00FFFC  1  00 FF 00 00  
+010000  1               
+010000  1               
+010000  1               
