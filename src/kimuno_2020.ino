@@ -44,9 +44,82 @@ extern "C" {
 SSD1306AsciiAvrI2c oled;
 #endif
 
+/****************************************************************\
+ ================================================================
+                    CIRCUIT for Arduino NANO/UNO
+ ================================================================
+           ----------------------------------------------
+            Arduino LCD Shield 1602A D1 ROBOT (DF ROBOT)
+           ----------------------------------------------
+
+              LCD RS pin to arduino digital pin 8
+              LCD E pin to arduino digital pin 9
+              LCD Backlight LED pin to arduino pin 10
+              LCD D4 pin to arduino digital pin 4
+              LCD D5 pin to arduino digital pin 5
+              LCD D6 pin to arduino digital pin 6
+              LCD D7 pin to arduino digital pin 7
+              LCD R/W pin to arduino ground pin
+              LCD VSS pin to arduino ground pin
+              LCD VCC pin to arduino 5V pin
+              SHIELD A0 to arduino A0 (shield buttons analog control)
+              SHIELD VIN to arduino VIN
+              SHIELD GND to arduino GND
+              SHIELD VCC to arduino VCC
+              SHIELD RST to arduino RST
+
+                      --------------------
+                       Arduino 4x4 keypad
+                      --------------------
+              
+              KEYPAD row 1 to arduino digital pin D12
+              KEYPAD row 2 to arduino digital pin D11
+              KEYPAD row 3 to arduino digital pin D3
+              KEYPAD row 4 to arduino digital pin D2
+              KEYPAD column 1 to arduino analog pin A4
+              KEYPAD column 2 to arduino analog pin A3
+              KEYPAD column 3 to arduino analog pin A2
+              KEYPAD column 4 to arduino analog pin A1
+
+ ================================================================
+\****************************************************************/
+
+// libraries
+#include <LiquidCrystal.h>
+#include <Keypad.h>
+
+// LCD pins
+#define RS 8    // LCD reset pin
+#define En 9    // LCD enable pin
+#define D4 4    // LCD data pin 4
+#define D5 5    // LCD data pin 5
+#define D6 6    // LCD data pin 6
+#define D7 7    // LCD data pin 7
+
+// keypad size
+const byte num_rows= 4;
+const byte num_cols= 4;
+
+// map keypad keys
+uint8_t keymap[num_rows][num_cols] = {
+  { 23, 12, 16,  5},
+  { 24, 13,  2,  6},
+  { 10, 14,  3,  7},
+  { 11, 15,  4,  8}  
+};
+
+// map keypad rows and columns
+byte row_pins[num_rows] = {12, 11, 3, 2};     // Rows 0 to 3
+byte col_pins[num_cols] = {A4, A3, A2, A1};   // Columns 0 to 3
+
+// init kepad
+Keypad keypad = Keypad(makeKeymap(keymap), row_pins, col_pins, num_rows, num_cols);
+
+// init LCD
+LiquidCrystal lcd(RS, En, D4, D5, D6, D7);  //interfacing pins
 
 // -------- some interlinkage with cpu.c:
-extern uint8_t RAM[1024]; 		// only calculator functions need access
+extern uint8_t RAM[1024];     // only calculator functions need access
 extern uint16_t pc;  // 6502 pc
 extern uint8_t SSTmode;
 extern uint8_t useKeyboardLed; // 0 to use Serial port or 1 for HEX digits.
@@ -134,8 +207,8 @@ byte dig[19] = {
 // ----------------------------------------------------------------
 // the extern "C" is because Arduino IDE is C++, different function call format.
 // whilst this .ino file is thus C++, cpu.c is C. The 'extern' bit just forces the IDE. Yuck.
-extern "C" void errout(uint8_t val)    { SerialX.write(val);  }
-extern "C" void serout(uint8_t val)    { SerialX.write(val);  }
+extern "C" void errout(uint8_t val)    { SerialX.write(val); }
+extern "C" void serout(uint8_t val)    { SerialX.write(val); }
 extern "C" void serouthex(uint8_t val) { SerialX.print(val, HEX); }
 extern "C" void seroutstr(char *s)     { uint8_t i=0; while (s[i]!='\0') serout(s[i++]); }
 extern "C" uint8_t getAkey()           { return(curkey);  }
@@ -158,7 +231,7 @@ extern "C" uint8_t xkeyPressed()       { return (curkey==0?0:1); } // any keypre
 extern "C" uint8_t getKIMkey() 
 {
   if (curkey==0)
-    return (0xFF);	//0xFF: illegal keycode 
+    return (0xFF);  //0xFF: illegal keycode 
 
   if ((curkey>='0') & (curkey <='9'))
     return (curkey-'0');
@@ -304,23 +377,12 @@ void interpretkeys()
 // =================================================================================================
 
 void setupUno() {
-  int i;
-  // Sets up the IO pins to a defined state at boot-up
-  // set columns to input with pullups
-  for (i=0;i<8;i++)
-  {  pinMode(aCols[i], INPUT_PULLUP);           // set pin to input
-     //digitalWrite(aCols[i], HIGH);       // turn on pullup resistors,  old style code
-  }
-  // set rows to output, and set them High to be in Neutral position
-  for (i=0;i<3;i++)
-  {  pinMode(aRows[i], OUTPUT);           // set pin to output
-     digitalWrite(aRows[i], HIGH);       // set to high
-  } 
-  // --------- clear display buffer ------------------------------------
-  // nice to clean up at boot (to avoid spurious reads). But: out of Flash space!
-//  for (i=0;i<3;i++)
-//  { threeHex[i][0]=threeHex[i][0]=0; }
-//  SerialX.println(F("Ready"));
+  // init LCD
+  lcd.begin(16, 2);
+  lcd.noAutoscroll();
+  //lcd.cursor();
+  lcd.print("Code Monkey KIM!");
+  lcd.setCursor(0, 1);
 }
 
 
@@ -328,88 +390,20 @@ void setupUno() {
 // but nowhere else, the KIM-1 simulation now goes through the hardware simulation of RIOT 2, further below.
 //
 extern "C" {
-void driveLEDs()
-{ 
-  int led, col, ledNo, currentBit, bitOn;
-  int byt,i;
-
-  // 1. initialse for driving the 6 segment-LEDs
-  // ledSelect pins drive common anode for [all segments] in [one of 6 LEDs]
-  for (led=0;led<7;led++)
-  { pinMode(ledSelect[led], OUTPUT);  // set led pins to output
-    digitalWrite(ledSelect[led], LOW); // LOW = not lit
+void driveLEDs() {  // now actually drives LCD instead (CMK)
+  lcd.setCursor(0, 1);
+  for (int iii=0;iii<3;iii++)
+  { lcd.print(threeHex[iii][0], HEX); lcd.print(threeHex[iii][1], HEX);
+    if (iii==1) lcd.print (' ');
   }
-  // 2. switch column pins to output mode
-  // column pins are the cathode for the LED segments
-  // lame code to cycle through the 3 bytes of 2 digits each = 6 leds
-  for (byt=0;byt<3;byt++)
-    for (i=0;i<2;i++)
-    {
-      ledNo=byt*2+i;
-      for (col=0;col<8;col++)  
-      {  pinMode(aCols[col], OUTPUT);           // set pin to output
-         currentBit = (1<<(7-col));             // isolate the current bit in loop
-         bitOn = (currentBit&dig[threeHex[byt][i]])==0;  
-         digitalWrite(aCols[col], bitOn);       // set the bit
-      }
-      digitalWrite(ledSelect[ledNo], HIGH); // Light this LED 
-      delay(2);
-      digitalWrite(ledSelect[ledNo], LOW); // unLight this LED
-    }
-}
-
-/* RIOT2 explanation: better emulation of LED display through simulated hardware rather than 2014's ROM patch
- *  
- *  The RIOT-002 chip is used to drive the LEDs, read the keypad, and control TTY and tape.
- *  KIM Uno only emulates the LED driver and timer hardware; the keypad, TTY and tape are emulated on a higher abstraction level in the ROM
- *  
- *  On the real KIM-1, the keyboard columns are PA0-PA6 and the rows are selected through 
- *                     the display  columns are PA0-PA6 and the segment led is decoded from PB 0000 1110
- *                     teletype mode is detected when  = 1.
- *                     teletype uses PB0, PB5, PA7
- *  
- *  1740 Data port A            Selects pattern to show on a segment LED (PA0-6) and TTY (PA7)
- *  1741 Data Direction port A  Are the GPIO pins set to input or output?
- *  1742 Data port B            Selects which of the 6 segment LEDs is lit up (PB1-3), 
- *                              and also: PB0 (TTY), PB4 ???, PB5 (TTY/tape input?), PB 6(RIOT internal, ChipSelect), PB7 (tape output)
- *  1743 Data direction port B  Are the GPIO pins set to input or output?
- */
-
-void write1740(void)            // ======== PA pins - set the individual LED segments on or off
-{
-  //riot2regs.ioPAD &= 0x7F;    // only the bits for the 7 LEDs in a segment LED
   
-  for (uint8_t ibit=0; ibit<7; ibit++) 
-      digitalWrite(kCols[ibit], (riot2regs.ioPAD & (1<<ibit))==0);       // set the bit, inverted through ==0
+  //lcd.print("driveLEDs");
+  //lcd.setCursor(0, 1);
 }
-
-void write1741(void)            // ======== Data direction register for PA
-{
-  for (uint8_t ibit=0; ibit<7; ibit++) 
-    if ( riot2regs.ioPADD & (1<<ibit) )
-      pinMode(kCols[ibit], OUTPUT);           // set pin to output
-    else
-      pinMode(kCols[ibit], INPUT);           // set pin to output
-}
-
-void write1742(void)            // ======== PB pins - set which of the 6 segment LEDs is lit up
-{
-  uint8_t led = ((riot2regs.ioPBD - 9) >> 1) & 0b111; // identify the selected segment LED
-
-  for (uint8_t iLed=0;iLed<6;iLed++)       // set GPIO pins of all 6 KIM-1 LED segments
-  { if (iLed==led)    
-      digitalWrite(ledSelect[iLed], HIGH); // power up this segment LED
-    else
-      digitalWrite(ledSelect[iLed], LOW);  // power down the other segment LEDs
-  }
-}
-
-void write1743(void)            // ======== Data direction register for PB
-{
-  // TEMP: all LED pins are set to output; there's no functionality we need except that.
-  for (uint8_t iLed=0;iLed<6;iLed++)
-    pinMode(ledSelect[iLed], OUTPUT);  
-}
+void write1740(void) {}  // not used (CMK)
+void write1741(void) {}  // not used (CMK)
+void write1742(void) {}  // not used (CMK)
+void write1743(void) {}  // not used (CMK)
 } // end of C segment
 
 
@@ -423,34 +417,53 @@ uint8_t parseChar(uint8_t n)
     
   // KIM-I keys
   switch (n-1) {              //KIM Uno keyscan codes to ASCII codes used by emulator
-    case	7	: c = 	'0' ;  break;	//        note: these are n-1 numbers!
-    case	6	: c = 	'1';  break;	// 
-    case	5	: c = 	'2';  break;	// 
-    case	4	: c = 	'3';  break;	//
-    case	3	: c = 	'4';  break;	//
-    case	2	: c = 	'5';  break;	//
-    case	1	: c = 	'6';  break;	//
-    case	0	: c = 	20;  break;	// ST
+    case  7 : c =   '0' ;  break; //        note: these are n-1 numbers!
+    case  6 : c =   '1';  break;  // 
+    case  5 : c =   '2';  break;  // 
+    case  4 : c =   '3';  break;  //
+    case  3 : c =   '4';  break;  //
+    case  2 : c =   '5';  break;  //
+    case  1 : c =   '6';  break;  //
+    case  0 : c =   20;  break; // ST
     
-    case	15	: c = 	'7' ;  break;	//
-    case	14	: c = 	'8';  break;	//
-    case	13	: c = 	'9';  break;	//
-    case	12	: c = 	'A';  break;	//
-    case	11	: c =   'B';  break;	//
-    case	10	: c =   'C';  break;	//
-    case	9	: c =   'D';  break;	//
-    case	8	: c =   18;  break;	// RS
+    case  15  : c =   '7' ;  break; //
+    case  14  : c =   '8';  break;  //
+    case  13  : c =   '9';  break;  //
+    case  12  : c =   'A';  break;  //
+    case  11  : c =   'B';  break;  //
+    case  10  : c =   'C';  break;  //
+    case  9 : c =   'D';  break;  //
+    case  8 : c =   18;  break; // RS
     
-    case	23	: c =  'E';  break;     //
-    case	22	: c =  'F';  break;     //
-    case	21	: c = 	1;   break;     // AD
-    case	20	: c = 	4;   break;     // DA
-    case	19	: c = 	'+'; break;     // + 
-    case	18	: c = 	7;   break;	// GO
-    case	17	: c =   16;  break;	// PC
-    case	16	: c = (SSTmode==0?']':'[');  break; // 	SST toggle
+    case  23  : c =  'E';  break;     //
+    case  22  : c =  'F';  break;     //
+    case  21  : c =   1;   break;     // AD
+    case  20  : c =   4;   break;     // DA
+    case  19  : c =   '+'; break;     // + 
+    case  18  : c =   7;   break; // GO
+    case  17  : c =   16;  break; // PC
+    case  16  : c = (SSTmode==0?']':'[');  break; //  SST toggle
   }
   return c;
+}
+
+// get user keypress
+char getch() {
+  static int key = NO_KEY;
+  key = keypad.getKey();
+
+  if (key == NO_KEY) {
+    // use LCD Shield buttons as KIM-1 command keys
+    int shield_input;
+    shield_input = analogRead (0);
+    if (shield_input < 60) { delay(300); return 21; }                // [DA] button right
+    else if (shield_input < 200) { delay(300); return 20;}           // [+]  button up
+    else if (shield_input < 400) { delay(300); return 18;}           // [PC] button down
+    else if (shield_input < 600) { delay(300); return 22;}           // [AD] button left
+    else if (shield_input < 800) { delay(300); return 19;}           // [GO] button select
+  }
+
+  return key;
 }
 
 // scankeys: the actual reading of the hardware keypad
@@ -458,90 +471,16 @@ uint8_t parseChar(uint8_t n)
 extern "C" {  // the extern C is to make function accessible from within cpu.c
 void scanKeys() 
 {
-  int led,row,col, noKeysScanned;
-  static int keyCode = -1, prevKey = 0;
-  static unsigned long timeFirstPressed = 0;
-    
-  // 0. disable driving the 7segment LEDs -----------------
-  for (led=0;led<8;led++)
-  { pinMode(ledSelect[led], INPUT);  // set led pins to input
-                                  // INPUT_PULLUP not really necessary? could be used just to stop them
-                                 // from driving either high or low.
-  }
-  // 1. initialise: set columns to input with pullups
-  for (col=0;col<8;col++)
-  {  pinMode(aCols[col], INPUT_PULLUP);           // set pin to input
-  }
+  //int led,row,col, noKeysScanned;
+  //static int keyCode = -1, prevKey = 0;
+  //static unsigned long timeFirstPressed = 0;
+  static int keyCode = -1;
   
-  // 2. perform scanning
-  noKeysScanned=0;
+  // get 4x4 keypad keypress (CMK)  
+  if ((keyCode = getch()) != NO_KEY) curkey = parseChar(keyCode);
 
-  for (row=0; row<3; row++)
-  { 
-    digitalWrite(aRows[row], LOW);       // activate this row         
-    for (col=0;col<8;col++)
-    {       
-      #if _TARGET == ESP32_R
-      delay(0.00001); //hack for esp32, let gpio settle. Pin 13 has an onboard LED, it interferes
-      #endif
-      
-      if (digitalRead(aCols[col])==LOW)  // key is pressed
-      { keyCode = col+row*8+1;
-        if (keyCode!=prevKey)
-        {   //SerialX.println();
-            //SerialX.print(" col: ");  SerialX.print(col, DEC); 
-            //SerialX.print(" row: ");  SerialX.print(row, DEC); 
-            //SerialX.print(" prevKey: ");  SerialX.print(prevKey, DEC); 
-            //SerialX.print(" KeyCode: ");  SerialX.println(keyCode, DEC); 
-           prevKey = keyCode;
-           curkey = parseChar(keyCode);
-            //SerialX.print(" curkey: ");  SerialX.print(curkey, DEC); 
-           timeFirstPressed=millis();  // 
-        }
-        else // if pressed for >1sec, it's a ModeShift key
-        {
-          if ((millis()-timeFirstPressed)>1000) // more than 1000 ms
-          {
-              if (keyCode==17) //it was the SST button
-              {
-                keyboardMode=(keyboardMode==0?1:0); // toggle
-                //SerialX.print(F("                                keyboardMode: "));  SerialX.print(keyboardMode, DEC); 
-                SerialX.print(F("\r\nkeyboardMode: "));  SerialX.print(keyboardMode, DEC); 
-                SSTmode=0;
-                curkey=0;  // don't do anything else with this keypress
-              }
-              if (keyCode==9) // it was RS button
-                curkey = '>';  // toggle eeprom write protect
-
-              // for VTL-02: pressing ST for a second enters VTL02 keyboard mode
-              if (keyCode==1) // it was ST button
-              {
-                curkey = 0;  // toggle eeprom write protect
-                keyboardMode=(keyboardMode==0?2:0); // toggle
-                //SerialX.print(F("                                keyboardMode(VTL): "));  SerialX.print(keyboardMode, DEC); 
-                SerialX.print(F("\r\nkeyboardMode(VTL): "));  SerialX.println(keyboardMode, DEC); 
-              }
-
-              timeFirstPressed=millis(); // because otherwise you toggle right back!
-          
-          }          
-        }
-      }
-      else
-        noKeysScanned++;  // another row in which no keys were pressed
-    }     
-    digitalWrite(aRows[row], HIGH);       // de-activate this row
-  }
-
-  if (noKeysScanned==24)    // no keys detected in any row, 3 rows * 8 columns = 24. 
-    prevKey=0;        // allows you to enter same key twice 
-
-  //20200808
-  write1742(); write1743();  // restore LED display
-  write1741(); write1740();  // restore LED display
-
-  if (xkeyPressed()!=0) //KIM Uno board input?
-    interpretkeys();    
+  //KIM Uno board input?
+  if (xkeyPressed()!=0) interpretkeys();    
   // --end 20200808
 
 } // end of function
@@ -563,7 +502,7 @@ extern "C" void eepromwrite(uint16_t eepromaddress, uint8_t bytevalue)
   if (eepromProtect==0)
     EEPROM.write(eepromaddress, bytevalue);
   else
-    SerialX.println(F("EEPROM WRITE-PROTECT, USE '>'"));
+    {}//SerialX.println(F("EEPROM WRITE-PROTECT, USE '>'"));
 }
 
 /*
@@ -608,7 +547,7 @@ void oledRefresh(int newOledMode)
 
 void driveCalcLEDs(uint8_t *numberStr, uint8_t decpt)
 { 
-  uint8_t led, col, ledNo, currentBit, bitOn;
+  /*uint8_t led, col, ledNo, currentBit, bitOn;
   uint8_t digit,i;
     
   // 1. initialse for driving the 6 segment LEDs
@@ -629,63 +568,63 @@ void driveCalcLEDs(uint8_t *numberStr, uint8_t decpt)
     digitalWrite(ledSelect7[digit], HIGH); // Light this LED 
     delay(2);
     digitalWrite(ledSelect7[digit], LOW); // unLight this LED
-  }
+  }*/
 } // end of function
 
 
 extern "C" {  // the extern C is to make function accessible from within cpu.c
-uint8_t enterflt(uint8_t reg)		// result code -1 = cancel, 0 = good
+uint8_t enterflt(uint8_t reg)   // result code -1 = cancel, 0 = good
 {
-	uint8_t fltstr[32];					// display string
-	uint8_t decpt = 0xFF, expt = 0xFF;	// pointers to start of mantissa & exponent in string
-	uint8_t mntsign = 0, expsign = 0;	// 1 means negative for mantissa/exponent
-	uint8_t strpos = 0, i, j;				// strpos is position counter in string
-	uint8_t mntval = 0, expval = 0;		// parsed value of mantissa & exponent
-	uint8_t carry = 0, addToExp;
-	int digit;
+  uint8_t fltstr[32];         // display string
+  uint8_t decpt = 0xFF, expt = 0xFF;  // pointers to start of mantissa & exponent in string
+  uint8_t mntsign = 0, expsign = 0; // 1 means negative for mantissa/exponent
+  uint8_t strpos = 0, i, j;       // strpos is position counter in string
+  uint8_t mntval = 0, expval = 0;   // parsed value of mantissa & exponent
+  uint8_t carry = 0, addToExp;
+  int digit;
         uint16_t offset;
         uint8_t done=0; 
         
-	// init
+  // init
         offset = WREG_OFFSET + 8*reg;
-	for (i=0;i<8;i++)
+  for (i=0;i<8;i++)
         #ifdef AVRX
-		fltstr[i]=65;
+    fltstr[i]=65;
         #else
-		fltstr[i]='_';
+    fltstr[i]='_';
         #endif
 
-	// input loop ---------------------------------------------------------------
-	do {
+  // input loop ---------------------------------------------------------------
+  do {
                 #ifdef AVRX
                     curkey=0;
                     driveCalcLEDs(fltstr, decpt);  // xxxxxx decpt may be a problem
                     scanKeys();
                 if (curkey!=0) {
                 #else
-		if (_kbhit()) {//}
-			curkey = _getch();
+    if (_kbhit()) {//}
+      curkey = _getch();
                 #endif
                 
-			if (curkey=='+') {
-				if (expt==0xFF) {			// not yet into exponent
-					mntsign = 1; strpos=0;
+      if (curkey=='+') {
+        if (expt==0xFF) {     // not yet into exponent
+          mntsign = 1; strpos=0;
                                         #ifdef AVRX
-				        fltstr[strpos++] = 64;
+                fltstr[strpos++] = 64;
                                         #else
-					fltstr[strpos++] = '-';
+          fltstr[strpos++] = '-';
                                         #endif
-				} else {						// minus sign relates to exponent
-					expsign = 1; strpos=expt;
+        } else {            // minus sign relates to exponent
+          expsign = 1; strpos=expt;
                                         #ifdef AVRX
-				        fltstr[strpos++] = 64;
+                fltstr[strpos++] = 64;
                                         #else
-					fltstr[strpos++] = '-';
+          fltstr[strpos++] = '-';
                                         #endif
-				}
-			}
-			if ((curkey>='0') && (curkey<='9')) {
-			// temp protection against entering 0.025, which breaks this code. 0.0x not OK in scient. notation anyway
+        }
+      }
+      if ((curkey>='0') && (curkey<='9')) {
+      // temp protection against entering 0.025, which breaks this code. 0.0x not OK in scient. notation anyway
                         // temp fix: do not allow entering a 0 after 0.
                           if ((curkey=='0') && (decpt==(strpos-1)) && (fltstr[strpos-1]=='0'))
                           {
@@ -694,172 +633,172 @@ uint8_t enterflt(uint8_t reg)		// result code -1 = cancel, 0 = good
                           else
                           // end of temp bug fix
                             fltstr[strpos++] = curkey;
-			}
-			if (curkey=='B') {
-				expt = strpos;
+      }
+      if (curkey=='B') {
+        expt = strpos;
                                 #ifdef AVRX
-				fltstr[strpos++] = 62;
+        fltstr[strpos++] = 62;
                                 #else
-				fltstr[strpos++] = 'E';
+        fltstr[strpos++] = 'E';
                                 #endif
-			}
-			if (curkey=='A') {
-				decpt = strpos-1;
-			}
+      }
+      if (curkey=='A') {
+        decpt = strpos-1;
+      }
 
                         #ifdef AVRX
-			fltstr[strpos] = 65;
+      fltstr[strpos] = 65;
                         #else
-			fltstr[strpos]=0x00;		// terminate into nice string
+      fltstr[strpos]=0x00;    // terminate into nice string
                         #endif
-		}
-	} while ((strpos<8) && (curkey!=7) && (curkey!=19) && (1!=(curkey>='C') && (curkey<='F')));
+    }
+  } while ((strpos<8) && (curkey!=7) && (curkey!=19) && (1!=(curkey>='C') && (curkey<='F')));
 
-	if (curkey==19)
-		return(-1);						// cancel
+  if (curkey==19)
+    return(-1);           // cancel
 
-	// parse into 8 byte fltpt65 format -----------------------------------------------------------------
-	// Ugly, horrible code. But running out of Arduino memory means C library calls must be avoided.
-	
-	if (expt==0xFF)		// if no E was entered, let it start at end of string and be 0 length
-		expt = strpos;
-	if (decpt==0xFF)	// if no dec pt was entered, put it at end of mantissa, just before the E
-		decpt = expt-1;
-	addToExp = decpt - mntsign;	// normalise mantissa: how much to add to exp to have 1.2345 format
+  // parse into 8 byte fltpt65 format -----------------------------------------------------------------
+  // Ugly, horrible code. But running out of Arduino memory means C library calls must be avoided.
+  
+  if (expt==0xFF)   // if no E was entered, let it start at end of string and be 0 length
+    expt = strpos;
+  if (decpt==0xFF)  // if no dec pt was entered, put it at end of mantissa, just before the E
+    decpt = expt-1;
+  addToExp = decpt - mntsign; // normalise mantissa: how much to add to exp to have 1.2345 format
 
-	// Exponent 3: parse and adjust exponent value to get normalised 1.23 format using addToExp
-	if ((strpos-1)>expt)	// user at least entered 1 exp digit
-		digit = (expsign==1?-1:1) * ((int) fltstr[strpos-1]-48) + (int) addToExp;	//expsign*-1: deal with negative exps
-	else
-		digit = (int) addToExp;			// user entered number without exp. So exp is 0.
-	if (digit<0)
-		digit = -(digit);		// do not want to use abs() function-arduino out of memory space :)
-	RAM[offset+1] = (digit<=9?digit:digit-10);	// store adjusted exp digit
-	addToExp = (digit<=9?0:1);					// simple carry mechanism: add could overflow to 2nd sigit
+  // Exponent 3: parse and adjust exponent value to get normalised 1.23 format using addToExp
+  if ((strpos-1)>expt)  // user at least entered 1 exp digit
+    digit = (expsign==1?-1:1) * ((int) fltstr[strpos-1]-48) + (int) addToExp; //expsign*-1: deal with negative exps
+  else
+    digit = (int) addToExp;     // user entered number without exp. So exp is 0.
+  if (digit<0)
+    digit = -(digit);   // do not want to use abs() function-arduino out of memory space :)
+  RAM[offset+1] = (digit<=9?digit:digit-10);  // store adjusted exp digit
+  addToExp = (digit<=9?0:1);          // simple carry mechanism: add could overflow to 2nd sigit
 
-	// Exponent 2: same thing.
-	if ((strpos-2)>expt)	// user entered a second exp digit
-		digit = (expsign==1?-1:1) * ((int) fltstr[strpos-2]-48) + (int) addToExp;	//expsign*-1: deal with negative exps
-	else
-		digit = (int) addToExp;			// user entered number without exp. So exp is 0.
-	if (digit<0)
-		digit = -(digit);		// do not want to use abs() function-arduino out of memory space :)
-	RAM[offset+1] |= (digit<=9?digit:digit-10)<<4;	// store adjusted exp digit in upper nibble
-	addToExp = (digit<=9?0:1);					// simple carry mechanism: add could overflow to 2nd sigit
-	
-	// Exponent 1: same thing.
-	if ((strpos-3)>expt)	// user entered a second exp digit
-		digit = ((int) fltstr[strpos-3]-48) + (int) addToExp;	// there is no carry or add to exp in digit 3
-	else
-		digit = (int) addToExp;			// user entered number without exp. So exp is 0.
-	if (digit<0)
-		digit = -(digit);		// do not want to use abs() function-arduino out of memory space :)
-	RAM[offset+0] = (digit<=9?digit:digit-10);	// store adjusted exp digit in lower nibble
+  // Exponent 2: same thing.
+  if ((strpos-2)>expt)  // user entered a second exp digit
+    digit = (expsign==1?-1:1) * ((int) fltstr[strpos-2]-48) + (int) addToExp; //expsign*-1: deal with negative exps
+  else
+    digit = (int) addToExp;     // user entered number without exp. So exp is 0.
+  if (digit<0)
+    digit = -(digit);   // do not want to use abs() function-arduino out of memory space :)
+  RAM[offset+1] |= (digit<=9?digit:digit-10)<<4;  // store adjusted exp digit in upper nibble
+  addToExp = (digit<=9?0:1);          // simple carry mechanism: add could overflow to 2nd sigit
+  
+  // Exponent 1: same thing.
+  if ((strpos-3)>expt)  // user entered a second exp digit
+    digit = ((int) fltstr[strpos-3]-48) + (int) addToExp; // there is no carry or add to exp in digit 3
+  else
+    digit = (int) addToExp;     // user entered number without exp. So exp is 0.
+  if (digit<0)
+    digit = -(digit);   // do not want to use abs() function-arduino out of memory space :)
+  RAM[offset+0] = (digit<=9?digit:digit-10);  // store adjusted exp digit in lower nibble
 
-	// Sign bits
-	RAM[offset+0] |= ((mntsign<<7) | (expsign<<6));
-//	printf("%u %u ", (RAM[offset+0] & 0xF0)>>4, RAM[offset+0] & 0x0F);
-//	printf("%u %u \n", (RAM[offset+1] & 0xF0)>>4, RAM[offset+1] & 0x0F);
+  // Sign bits
+  RAM[offset+0] |= ((mntsign<<7) | (expsign<<6));
+//  printf("%u %u ", (RAM[offset+0] & 0xF0)>>4, RAM[offset+0] & 0x0F);
+//  printf("%u %u \n", (RAM[offset+1] & 0xF0)>>4, RAM[offset+1] & 0x0F);
 
-	// print mantissa
-	j = mntsign;
-	for (i=0;i<12;i++)
-	{
-		if (j<expt)
-			RAM[offset+2+i] = (fltstr[j]-48)<<4;
-		else
-			RAM[offset+2+i] = 0;
-		j++;
+  // print mantissa
+  j = mntsign;
+  for (i=0;i<12;i++)
+  {
+    if (j<expt)
+      RAM[offset+2+i] = (fltstr[j]-48)<<4;
+    else
+      RAM[offset+2+i] = 0;
+    j++;
 
-		if (j<expt)
-			RAM[offset+2+i] |= (fltstr[j]-48);
-		j++;
+    if (j<expt)
+      RAM[offset+2+i] |= (fltstr[j]-48);
+    j++;
 
-//		printf("%u %u ", (RAM[offset+2+i] & 0xF0)>>4, RAM[offset+2+i] & 0x0F);
-	}
-//	printf("\n");
-	return (curkey);  // return value, if not -1, can be used to jump to next register value entry call
+//    printf("%u %u ", (RAM[offset+2+i] & 0xF0)>>4, RAM[offset+2+i] & 0x0F);
+  }
+//  printf("\n");
+  return (curkey);  // return value, if not -1, can be used to jump to next register value entry call
 } // end function
 } // end C segment
 
 extern "C" {  // the extern C is to make function accessible from within cpu.c
-uint8_t showflt(uint8_t reg)	// returns location of decimal point in string
+uint8_t showflt(uint8_t reg)  // returns location of decimal point in string
 {
-	uint8_t fltstr[32];					// display string
-	uint8_t mntsign = 0, expsign = 0;	// 1 means negative for mantissa/exponent
-	uint8_t cnt, expt, i;	// decpt,
+  uint8_t fltstr[32];         // display string
+  uint8_t mntsign = 0, expsign = 0; // 1 means negative for mantissa/exponent
+  uint8_t cnt, expt, i; // decpt,
         uint16_t offset;
-	int exp, decpt;
+  int exp, decpt;
 
-	// init
+  // init
         offset = WREG_OFFSET + 8*reg;
-	for (i=0;i<8;i++)
-		fltstr[i]='_';  // no longer necessary I think
-	// calculate exponent
-	exp = (RAM[offset+1] & 0x0F) + 10*((RAM[offset+1] & 0xF0)>>4) + 100*(RAM[offset+0] & 0x0F);
-//	printf("\n\nexp = %d\n", exp);
+  for (i=0;i<8;i++)
+    fltstr[i]='_';  // no longer necessary I think
+  // calculate exponent
+  exp = (RAM[offset+1] & 0x0F) + 10*((RAM[offset+1] & 0xF0)>>4) + 100*(RAM[offset+0] & 0x0F);
+//  printf("\n\nexp = %d\n", exp);
 
-	// determine maximum exponent value we can show as normal number without E
-	mntsign = (RAM[offset+0] & 0x80)>>7;	// negative mantissa: 1
-	expsign = (RAM[offset+0] & 0x40)>>6;	// negative exponent: 1
-	decpt = (mntsign==0?0:1);					// dec point is after digit0 (+ values) or digit1 (- values)
-	
-	// with pos numbers, any E between 0 and 7 can be polished away. If there's a '-', one less
-	if ((exp>0) && (exp<(7 - mntsign)) && (expsign==0))
-	{	// yes, we can polish E away
-		decpt +=exp;
-		expt = 0;
-	}
-/*		else // negative exponent
-		{	decpt -=exp;
-			// need to ROR the string's digits or decpt gets to be negative!
+  // determine maximum exponent value we can show as normal number without E
+  mntsign = (RAM[offset+0] & 0x80)>>7;  // negative mantissa: 1
+  expsign = (RAM[offset+0] & 0x40)>>6;  // negative exponent: 1
+  decpt = (mntsign==0?0:1);         // dec point is after digit0 (+ values) or digit1 (- values)
+  
+  // with pos numbers, any E between 0 and 7 can be polished away. If there's a '-', one less
+  if ((exp>0) && (exp<(7 - mntsign)) && (expsign==0))
+  { // yes, we can polish E away
+    decpt +=exp;
+    expt = 0;
+  }
+/*    else // negative exponent
+    { decpt -=exp;
+      // need to ROR the string's digits or decpt gets to be negative!
 
-			expt = 0;
-		}
-	}
-*/	else						// we need to show exponent, how many digits?
-	{	expt = 0;
-		if (exp>0) 
-		{	expt = 2; //1;
-			fltstr[6] = (RAM[offset+1] & 0x0F) + 48;
-		}
-		if (exp>9) 
-		{	expt = 3; //2;
-			fltstr[5] = (uint8_t) ((RAM[offset+1] & 0xF0)>>4) + (uint8_t) 48;
-		}
-		if (exp>90) 
-		{	expt = 4; //3;
-			fltstr[4] = (RAM[offset+0] & 0x0F) + 48;
-		}
+      expt = 0;
+    }
+  }
+*/  else            // we need to show exponent, how many digits?
+  { expt = 0;
+    if (exp>0) 
+    { expt = 2; //1;
+      fltstr[6] = (RAM[offset+1] & 0x0F) + 48;
+    }
+    if (exp>9) 
+    { expt = 3; //2;
+      fltstr[5] = (uint8_t) ((RAM[offset+1] & 0xF0)>>4) + (uint8_t) 48;
+    }
+    if (exp>90) 
+    { expt = 4; //3;
+      fltstr[4] = (RAM[offset+0] & 0x0F) + 48;
+    }
                 #ifdef AVRX
-		fltstr[7-expt] = (expsign==1?64:62);
+    fltstr[7-expt] = (expsign==1?64:62);
                 #else
-		fltstr[7-expt] = (expsign==1?'-':'E');
+    fltstr[7-expt] = (expsign==1?'-':'E');
                 #endif
-	}
+  }
 
-	// fill string with mantissa
-	cnt=0;
-	if (mntsign==1)
+  // fill string with mantissa
+  cnt=0;
+  if (mntsign==1)
                 #ifdef AVRX
-		fltstr[0] = 64;
+    fltstr[0] = 64;
                 #else
-		fltstr[0]='-';
+    fltstr[0]='-';
                 #endif
 
-	for (i=mntsign;i<(7-expt);i=i+2)
-	{
-		fltstr[i] = (uint8_t) ((RAM[offset + 2 + cnt ] & 0xF0)>>4) + (uint8_t) 48;
-//		printf(" %c ", (uint8_t) ((RAM[offset + 2 + cnt ] & 0xF0)>>4) + (uint8_t) 48);
-		if ((i+1)<(7-expt)) // bug fix 20141007
+  for (i=mntsign;i<(7-expt);i=i+2)
+  {
+    fltstr[i] = (uint8_t) ((RAM[offset + 2 + cnt ] & 0xF0)>>4) + (uint8_t) 48;
+//    printf(" %c ", (uint8_t) ((RAM[offset + 2 + cnt ] & 0xF0)>>4) + (uint8_t) 48);
+    if ((i+1)<(7-expt)) // bug fix 20141007
                 { fltstr[i+1] = (RAM[offset + 2 + cnt ] & 0x0F) + 48;
-//  		  printf(" %c   ", (RAM[offset + 2 + cnt ] & 0x0F) + 48);
+//        printf(" %c   ", (RAM[offset + 2 + cnt ] & 0x0F) + 48);
                 }
-		cnt++;
-	}
-	fltstr[7]=0x00;	// string terminator
+    cnt++;
+  }
+  fltstr[7]=0x00; // string terminator
 
-//	printf("\n\n%s\n", fltstr);
+//  printf("\n\n%s\n", fltstr);
 
         #ifdef AVRX
         curkey=0;
@@ -869,59 +808,59 @@ uint8_t showflt(uint8_t reg)	// returns location of decimal point in string
           curkey=0;  // to clear any keypresses before returning to KIM    
         #else
         // show number with dec point inserted
-	for (i=0;i<=decpt;i++)
-		printf("%c", fltstr[i]);
-	printf(".");
-	for (i=decpt+1;i<7;i++)
-		printf("%c", fltstr[i]);
-	printf("\n");
+  for (i=0;i<=decpt;i++)
+    printf("%c", fltstr[i]);
+  printf(".");
+  for (i=decpt+1;i<7;i++)
+    printf("%c", fltstr[i]);
+  printf("\n");
         #endif
         
-	return decpt;						// pointers to start of mantissa & exponent in string
+  return decpt;           // pointers to start of mantissa & exponent in string
 } // end function
 } // end C segment
 
 
 extern "C" {  // the extern C is to make function accessible from within cpu.c
-uint8_t enteroperation(void)		// result code -1 = cancel, 0 = good
+uint8_t enteroperation(void)    // result code -1 = cancel, 0 = good
 {
-	uint8_t fltstr[8];					// display string
-	uint8_t strpos = 4, i;				// strpos is position counter in string
+  uint8_t fltstr[8];          // display string
+  uint8_t strpos = 4, i;        // strpos is position counter in string
 
-	// init
+  // init
         #ifdef AVRX
-	for (i=0;i<8;i++)  fltstr[i]=66;
-	fltstr[4]=65;  fltstr[5]=65;
+  for (i=0;i<8;i++)  fltstr[i]=66;
+  fltstr[4]=65;  fltstr[5]=65;
         #else
-	for (i=0;i<8;i++)  fltstr[i]=' ';
-	fltstr[4]='_';  fltstr[5]='_';
+  for (i=0;i<8;i++)  fltstr[i]=' ';
+  fltstr[4]='_';  fltstr[5]='_';
         #endif
 
-	// input loop ---------------------------------------------------------------
-	do {
+  // input loop ---------------------------------------------------------------
+  do {
     #ifdef AVRX
     curkey=0;
     driveCalcLEDs(fltstr, 5);  scanKeys();
     if (curkey!=0) { 
 //    #else
-//		if (_kbhit()) { // } this curly brace is there so Arduino IDE does not miscount when it does { } highlighting
-//			curkey = _getch();
+//    if (_kbhit()) { // } this curly brace is there so Arduino IDE does not miscount when it does { } highlighting
+//      curkey = _getch();
     #endif
                 
-			if ((curkey>=48) && (curkey<=57))     //only allow dec digits
-				fltstr[strpos++] = curkey;
+      if ((curkey>=48) && (curkey<=57))     //only allow dec digits
+        fltstr[strpos++] = curkey;
 
                         #ifdef AVRX
-			fltstr[strpos] = 65;
+      fltstr[strpos] = 65;
                         #else
-			fltstr[strpos]=0x00;		// terminate into nice string
-//			printf("> %s  ms%u es%u expt%u decpt%u\r", fltstr, mntsign, expsign, expt, decpt);
+      fltstr[strpos]=0x00;    // terminate into nice string
+//      printf("> %s  ms%u es%u expt%u decpt%u\r", fltstr, mntsign, expsign, expt, decpt);
                         #endif
-		}
-	} while ((strpos<6) && (curkey!=7) && (curkey!=19));
+    }
+  } while ((strpos<6) && (curkey!=7) && (curkey!=19));
 
-	if (curkey==19)
-		return(-1);						// cancel
+  if (curkey==19)
+    return(-1);           // cancel
 
         RAM[0x00F3]= (fltstr[4]-48)*10 + (fltstr[5]-48);  // operation to go into 6502 A register
         RAM[0x00EF] = (uint8_t) 0xE0;  RAM[0x00F0] = (uint8_t) 0x6F;                // set PC register to fltpt65 start address (0x6FE0, not 0x5000, we need to start with a JSR and end with a BRK)
@@ -956,7 +895,7 @@ uint8_t tapeSave(uint8_t ID, uint8_t SAL, uint8_t SAH, uint8_t EAL, uint8_t EAH,
     filnam[1]=( ((ID & 0xF0) >> 8)<0x0A  ?  ((ID & 0xF0) >> 8)+0x30  :  ((ID & 0xF0) >> 8)+0x40-0x09);
     filnam[2]=( ((ID & 0x0F)     )<0x0A  ?  ((ID & 0x0F)     )+0x30  :  ((ID & 0x0F)     )+0x40-0x09);
     if (ID<0x01 || ID>0xFE)          // not allowed on KIM-1
-    {   seroutstr("Bad file name\r\n");    return(0);  }
+    {   /*seroutstr("Bad file name\r\n");*/    return(0);  }
 
 //sprintf(filnam, "tape/%02x", ID);
 //seroutstr(filnam); seroutstr("\r\n");
@@ -1036,14 +975,14 @@ void    tapeDirectory(void)
 
     // handle unformatted file system ---------------------------------------------------------
     if(!SPIFFS.begin(false))
-    { seroutstr("SPIFFS Mount Failed, retry after formatting?\r\n");
+    { /*seroutstr("SPIFFS Mount Failed, retry after formatting?\r\n"*/);
 
       userInput();
       
       if (curkey='y' || curkey == 'Y')     
       { curkey=0; 
         if(!SPIFFS.begin(true))
-        { seroutstr("SPIFFS Mount Failed after formatting attempt. Aborting tape operation.");
+        { /*seroutstr("SPIFFS Mount Failed after formatting attempt. Aborting tape operation.");*/
           return;
         }
       } else

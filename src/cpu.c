@@ -1,6 +1,8 @@
 /* KIM-I/Apple-1 emulator for Arduino, STM32, ESP32 and Linux
-   Most of this is the 6502 emulator from Mike Chambers,
+
+   Uses the 6502 emulator from Mike Chambers as its brains,
    http://forum.arduino.cc/index.php?topic=193216.0
+
      KIM-I/Apple-1 hacked in by Oscar
      http://obsolescenceguaranteed.blogspot.ch/
 */
@@ -10,60 +12,27 @@
 // EEPROM pgmspace or regular C array:
 #if _TARGET == ARDUINO_MINI
   #include <avr/pgmspace.h>
-#elif _TARGET == BLUEPILL_STM
+#elif _TARGET == BLUEPILL_STM || _TARGET == ESP32_R
   #include <pgmspace.h>
-#elif _TARGET == ESP32_R
-  #include <pgmspace.h>
-  #include <stdint.h>   // req'd for ESP32, not for Pro Mini. Arduino is a mess sometimes.
 #endif
 
-#ifdef AVRX
+#if _TARGET == ARDUINO_MINI || _TARGET == BLUEPILL_STM
+// not just for ARDUINO_MINI; BLUEPILL_STM also uses eeprom for tape.
   extern uint8_t eepromread(uint16_t eepromaddress);
   extern void eepromwrite(uint16_t eepromaddress, uint8_t bytevalue);
-#else
+#endif
+
+#if _TARGET != ARDUINO_MINI
   #include <stdio.h>
   #include <stdint.h>
   #include <time.h>
   #include <stdio.h>
-//  void delay(int number_of_seconds);
   #pragma warning(disable : 4996) // MS VC2008 does not like unsigned char -> signed char converts.
 #endif
 
+#include "kimuno.h"
 #include "roms.h"
 
-
-
-#if _TARGET == PERSONAL_COMPUTER
-  extern uint8_t tapeSave(uint8_t ID, uint8_t SAL,  uint8_t SAH,  uint8_t EAL,  uint8_t EAH,  uint8_t AppleMode); 
-  extern uint8_t tapeLoad(uint8_t ID, uint8_t xSAL, uint8_t xSAH, uint8_t xEAL, uint8_t xEAH, uint8_t AppleMode);
-  extern void    tapeDirectory(void);
-  extern void    tapeDelete(uint8_t ID);
-  extern void    tapeInit(void);
-#endif
-
-
-extern char threeHex[3][2]; 	// buffer for 3 hex digits
-extern int blitzMode;		// status variable only for microchess
-// various functions for (simulated or real) serial output
-extern void serout(uint8_t value);
-extern void errout(uint8_t value);
-extern void dbgout(uint16_t pc, uint8_t sp, uint8_t a, uint8_t x, uint8_t y, uint8_t cpustatus);
-void dbgtxt(uint8_t value);
-extern void serouthex(uint8_t val);
-// various functions for dealing with keyboards (serial, simulated keypad, physical keypad)
-extern uint8_t getAkey(void);	// for serial port get normal ASCII keys
-extern uint8_t getKIMkey();	// for serial emulation of KIM keypad
-extern void clearkey(void);
-// using the keypad on an Arduino KIM Uno PCB
-extern void driveLEDs();
-extern void scanKeys(); 	// for reading Arduino's KIM Uno keypad
-uint8_t useKeyboardLed=0x01; 	// 0 to use Serial port, 1 to use keyboard/LED display.
-// some interlinkage with cpu.c and the calling Arduino .ino file:
-void nmi6502(void);
-uint8_t nmiFlag=0; 		// added to aid single-stepping SST mode on KIM-I
-uint8_t SSTmode = 0; 		// SST switch in KIM-I: 1 = on.
-uint8_t iii;  			// counter for various purposes, 
-				//declared here to avoid in-function delay in 6502 functions.
 
 #define FLAG_CARRY     0x01
 #define FLAG_ZERO      0x02
@@ -101,9 +70,7 @@ uint8_t iii;  			// counter for various purposes,
 //6502 CPU registers
 uint16_t pc;
 uint8_t sp, a, x, y, cpustatus;
-// BCD fix OV 20140915 - helper variables for adc and sbc
-uint16_t lxx,hxx;
-// end of BCD fix part 1
+uint16_t lxx,hxx; // for bcd fix oscar v
 
 //helper variables
 uint32_t instructions = 0; //keep track of total instructions executed
@@ -111,39 +78,28 @@ int32_t clockticks6502 = 0, clockgoal6502 = 0;
 uint16_t oldpc, ea, reladdr, value, result;
 uint8_t opcode, oldcpustatus, useaccum;
 
+// some interlinkage with cpu.c and the calling Arduino .ino file:
+extern int blitzMode;   // status variable only for microchess
+extern  char threeHex[3][2];   // buffer for 3 hex digits
+//
+uint8_t useKeyboardLed=0x01;   // 0 to use Serial port, 1 to use keyboard/LED display.
+void nmi6502(void);
+uint8_t nmiFlag = 0;    // added to aid single-stepping SST mode on KIM-I
+uint8_t SSTmode = 0;    // SST switch in KIM-I: 1 = on.
+uint8_t iii;        // counter for various purposes, 
+uint8_t Apple1ColCounter=0;  // max 40 columns for the Apple-1
 
-// FLTPT65 SUPPORT ------------------------------------------------------------------
-#define WREG_OFFSET 0x0360
-void copyWreg(uint8_t a, uint8_t b);
-void swapWreg(uint8_t a, uint8_t b);
-extern uint8_t enterflt(uint8_t reg);
-extern uint8_t showflt(uint8_t reg);
-extern uint8_t enteroperation(void);
-// ----------------------------------------------------------------------------------
 
-
-// RAM memory -----------------------------------------------------------------------
-
-// KIM-1 1K RAM chips:
+// ======== Base 1K of KIM-1 RAM =================================================
 uint8_t RAM[1024]; 	// main 1KB RAM	     0x0000-0x04FF
 
-// Extra RAM above 1K
-// - can be RAM or EEPROM depending on platform!
-// - size varies depending on platform
-#if _TARGET == PERSONAL_COMPUTER
-uint8_t RAM2[3072]; 	// on PC, ram in     0x0500-0x08FF instead of Arduino EEPROM
-uint8_t RAM3[0x5000-0x2000]; 	// on PC, KIM-1 expansion RAM, 12K
-#elif _TARGET == ESP32_R
-uint8_t RAM2[3072]; 	// on PC, ram in     0x0500-0x08FF instead of Arduino EEPROM
-#elif _TARGET == BLUEPILL_STM
-uint8_t RAM2[3072]; 	// on PC, ram in     0x0500-0x08FF instead of Arduino EEPROM
-#else // atMega328: Pro Mini or Uno 
-  #ifndef AVRX
-  uint8_t RAM2[1024]; 	// on PC, ram in     0x0500-0x08FF instead of Arduino EEPROM
-  #endif              	// on Arduino,		            these are EEPROM functions
+// ======== Two possible expansion RAMs ==========================================
+#if _TARGET != ARDUINO_MINI     // then 0x0400 up to RAM_LIMIT1 is indeed RAM
+uint8_t RAM2[RAM_LIMIT1-0x400];   // RAM #2 from 0x0400 instead of Arduino EEPROM
+uint8_t RAM3[RAM_LIMIT2-0x2000];  // expansion RAM #3, 12K
 #endif
 
-// RIOT chips each contain 64 bytes of RAM:
+// ======== RIOT chips each contain 64 bytes of RAM ===============================
 uint8_t RAM003[64];    // RAM from 6530-003  0x1780-0x17BF, free for user applications
 uint8_t RAM002[64];    // RAM from 6530-002  0x17C0-0x17FF, free for user except 0x17E7-0x17FF
 
@@ -152,17 +108,13 @@ uint8_t RAM002[64];    // RAM from 6530-002  0x17C0-0x17FF, free for user except
 //               FFFA, FFFB - NMI Vector
 //               FFFC, FFFD - RST Vector
 //               FFFE, FFFF - IRQ Vector
-
-// note #2: CRBond calculator uses RAM workspace if it is called upon:
-// - W1 starts at 3Df
-// - W2 starts at 3E7
-// - W3 starts at 3EF
+//
+// And then just so you know: CRBond calculator uses RAM workspace if it is called upon:
+// - floating pt registers (8 bytes each) W1 starts at 3Df, W2 starts at 3E7, W3 starts at 3EF
 // so once you start using the math lib, those addresses are overwritten.
-// ----------------------------------------------------------------------------------
 
 
-
-// ============ MEMORY READ ROUTINE ================================================
+// ============ MEMORY READ ROUTINE =================================================
 //
 // slot in your ROM, RAM, or I/O devices for reading
 //
@@ -175,103 +127,106 @@ uint8_t read6502(uint16_t address)
   }
 
   // ======= RAM above 1K (can be real RAM or EEPROM!) ==========
-  #if _TARGET == PERSONAL_COMPUTER
-  if (address < 0x1000) { return(RAM2[address-0x0400]);	} // see bugfix below
-  #elif _TARGET == ESP32_R
-  if (address < 0x1000) { return(RAM2[address-0x0400]); } // see bugfix below
-  #elif _TARGET == BLUEPILL_STM
-  if (address < 0x0800) { return(RAM2[address-0x0400]); }
-  #else // atMega328: Pro Mini or Uno 
-    #ifdef AVRX //cleanup define mess some day...
-  if (address < 0x0800) {         
-    return(eepromread(address-0x0400));	}	// 0x0400-0x0800 is EEPROM for Arduino,
-    #elif
-    return(RAM2[address-0x0400]); // should not be used for any platform...
-    #endif
+  #if _TARGET != ARDUINO_MINI             // then 0x0400 up to RAM_LIMIT1 is indeed RAM
+    if (address < RAM_LIMIT1)
+      return(RAM2[address-0x0400]);
+  #else                                   // on the Pro Mini (atMega328) it's EEPROM,
+    if (address < RAM_LIMIT1)             // acting as EEPRAM if you want...
+      return(eepromread(address-0x0400));
   #endif
-  
-  // ===========================================
-  // I really believe this is an undiscovered
-  // but innocent bug in Apple Integer Basic:
-  // the thing reads from himem+1
-  // but it's harmless, don't generate an error
-  // ===========================================
-  #if _TARGET == PERSONAL_COMPUTER
-  if (address == 0x1000) return(0);
-  #elif _TARGET == ESP32_R
-  if (address == 0x1000) return(0);
-  #endif
+
+  // =================================================================================
+  // I really believe this is an undiscovered but innocent bug in Apple Integer Basic:
+  // the thing reads from himem+1. But it's harmless, don't generate an error
+  // =================================================================================
+  //
+  if (address == 0x1000) return(0);         //                          <----- REMOVE THIS IF YOU ADD RAM >$1000!
+
 
   // ====== read into empty space ======
-  if (address < 0x1700) {             		// read in empty space
-    errout('%');  errout('5');      		// error code 5 - read in empty space
+  if (address < 0x1700)              		    // read in empty space
+  { errout('%'); errout('5'); return(0); }  // error code 5 - read in empty space
+
+
+  // ====== read into IO space inside RIOTs ======
+
+  if (address < 0x1740)          		        // 0x1700-0x1740 is IO space of RIOT 003
+  {
+    #if _TARGET != PERSONAL_COMPUTER
+    if ((address >= 0x1704) && (address <= 0x1707)) // timer, thanks to Willem Aandewiel
+    {
+      if (SSTmode == 1) 
+      {
+          if (address == 0x1707)
+            return(0X80);                   // always bailout in SST mode
+          else 
+          { value = riotTimerRead(address);  return(value); }
+      } 
+      value = riotTimerRead(address);       // status timer (AaW)
+      return(value);
+    }
+    #endif    
+    errout('%');  errout('7');              // warn of unimplemented read in I/O 003
     return(0);
-  
-  // ====== read into RIOT 003 ======
   }
-  if (address < 0x1740) {             		// 0x1700-0x1740 is IO space of RIOT 003
-    errout('%');  errout('7');      		// trap code 7 - read in I/O 003
+    
+  if (address < 0x1780)                     // 0x1740-0x1780 is IO space of RIOT 002
+  {
+    if (address == 0x1740) 
+      return (useKeyboardLed);              // returns 1 for Keypad/LED or 0 for Serial terminal
+  	if (address == 0x1747) 
+  	  return (0xFF);                // CLKRDI  =$1747,READ TIME OUT BIT,count is always complete...
+    errout('%');  errout('6');              // warn of unimplemented read in I/O 002
     return(0);
   }
-  if (address < 0x1780) {             		// 0x1740-0x1780 is IO space of RIOT 002
-	if (address == 0x1747) return (0xFF); 
-	// CLKRDI  =$1747,READ TIME OUT BIT,count is always complete...
-	if (address == 0x1740) return (useKeyboardLed);	
-	// returns 1 for Keyboard/LED or 0 for Serial terminal
-  	errout('%');  errout('6');     		// trap code 6 - read in I/O 002
-   	return(0);
-  }
-  if (address < 0x17C0) {             	// 0x1780-0x17C0 is RAM from RIOT 003
+    
+  // ====== read in RAM inside RIOTs ======
+
+  if (address < 0x17C0)                     // 0x1780-0x17C0 is RAM from RIOT 003
     return(RAM003[address-0x1780]);
-  }
-
-  // ====== read into RIOT 002 ======
-  if (address < 0x1800) {            	// 0x17C0-0x1800 is RAM from RIOT 002
-    return(RAM002[address-0x17C0]);
-  }
   
-  // ====== read into ROM inside RIOTs ======
+  if (address < 0x1800)          	          // 0x17C0-0x1800 is RAM from RIOT 002
+    return(RAM002[address-0x17C0]);
 
-  if (address < 0x1C00) {              	// 0x1800-0x1C00 is ROM 003
+  
+  // ====== read in ROM inside RIOTs ======
+
+  if (address < 0x1C00) {              	    // 0x1800-0x1C00 is ROM 003
 
     if (address==0x1800)
-        if (pc==0x1800+1)                // ========= tape save ===============
+        if (pc==0x1800+1)                   // ========= tape save ===============
         {
-//        serout('W');   
         tapeSave(RAM002[0x17F9-0x17C0],                             //ID 
             RAM002[0x17F5-0x17C0], RAM002[0x17F6-0x17C0],           //SAL,SAH 
             RAM002[0x17F7-0x17C0], RAM002[0x17F8-0x17C0],0);          //EAL,EAH
-        pc = 0x185C;	                // skip subroutine, display '0000'
-	    return (0xEA);                  // return with a fake NOP instruction 
+        pc = 0x185C;	                      // skip subroutine, display '0000'
+	    return (0xEA);                        // return with a fake NOP instruction 
         }
 
-    if (address==0x1873)                // ========= tape load ===============
+    if (address==0x1873)                    // ========= tape load ===============
         if (pc==0x1873+1)
         {   
-//            serout('R');
-            if(tapeLoad(RAM002[0x17F9-0x17C0], 0xFF, 0xFF, 0xFF, 0xFF,0)==1) // ID, saved location
+            if(tapeLoad(RAM002[0x17F9-0x17C0], RAM002[0x17F5-0x17C0], RAM002[0x17F6-0x17C0], 0xFF, 0xFF,0)==1) // ID, saved location
                 pc = 0x1925;                // normal exit, '0000' display
             else
-                pc = 0x1929;	            // load error, display 'FFFF'
-		    return (0xEA);                  // return with a fake NOP instruction
+                pc = 0x1929;	              // load error, display 'FFFF'
+		    return (0xEA);                      // return with a fake NOP instruction
         }
-/*    if (address==0x1900)                // ========= tape directory ==========
-    {   tapeDirectory();    pc = 0x1780;    return(0xEA);
-    }
-    if (address=0x1901)                 // ========= tape delete =============
-    {   tapeDelete(RAM002[0x17F9-0x17C0]); //ID
-        pc = 0x1780;    return(0xEA);
-    }
-    if (address=0x1902)                 // ========= tape initialise =========
-    {   tapeInit();    pc = 0x1780;    return(0xEA);
-    }
-*/
-    #ifdef AVRX
-    return(pgm_read_byte_near(rom003 + address - 0x1800));
-	#else
-	return rom003[address - 0x1800];
-	#endif
+    if (address==0x1900)                    // ========= tape directory ==========
+        if (pc==0x1900+1)
+        {   tapeDirectory();    pc = 0x1C00;    return(0xEA);   }
+    if (address=0x1901)                     // ========= tape delete =============
+        if (pc==0x1901+1)                   // reading 1901 is not enough, you need to be executing it
+        {  tapeDelete(RAM002[0x17F9-0x17C0]); //ID
+           pc = 0x1C00;    return(0xEA);
+        }
+    if (address=0x1902)                     // ========= tape initialise =========
+        if (pc==0x1902+1)
+    {   tapeInit();    pc = 0x1C00;    return(0xEA);  }
+
+    return(readRom(rom003,address - 0x1800));                           // <-------------------- ???????????????????????????????
   }
+  
   if (address < 0x2000)			// 0x1C00-0x2000 is ROM 002. Needs some intercepting
   {
 	if (address == 0x1EA0) 		// intercept OUTCH (send char to serial)
@@ -296,7 +251,19 @@ uint8_t read6502(uint16_t address)
 			pc = 0x1C4F;    // skip subroutine
 			return (0xEA); // and return from subroutine with a fake NOP instruction
 	}
-  	if (address == 0x1F1F) // intercept SCANDS (display F9,FA,FB)
+
+  // the ROM patch below shortens the timing loop in the KIM-1 ROM. Reason: the KIM Uno takes time to emulate the RIOT
+  // hardware, whereas the real KIM-1 just bangs a byte or two in RIOT registers and that's it.
+  // we shorten the timing loop to compensate for this. If you don't, you'll see the display flicker as the emulation
+  // does not achieve enough 'frames per second' in the display updates. 0x2F instead of 0x7F seems to compensate appropriately.
+  //
+  #if _TARGET == ARDUINO_MINI
+  if (address==0x1F5A) return(0x1f); // shorten wait between LED updates as atmega328 is slower! 0x7F originally.  	
+  #elif _TARGET == ESP32_R
+  if (address==0x1F5A) return(0xff); // lengthen wait between LED updates as esp32 is faster! 0x7F originally.    
+  #endif
+    
+  if (address == 0x1F1F) // intercept SCANDS (display F9,FA,FB)
 	{
 		// light LEDs ---------------------------------------------------------
 		threeHex[0][0]= (RAM[0x00FB] & 0xF0) >> 4;
@@ -306,25 +273,35 @@ uint8_t read6502(uint16_t address)
 		threeHex[2][0]= (RAM[0x00F9] & 0xF0) >> 4;
 		threeHex[2][1]= RAM[0x00F9] & 0xF;
                         
-	#ifdef AVRX      // remove this block to get led digits on serial for AVR too
-		serout(13); serout('>');
+	//#ifdef AVRX      // remove this block to get led digits on serial for AVR too
+  #if _TARGET != PERSONAL_COMPUTER
+		/*serout(13); serout('>');
 		for (iii=0;iii<3;iii++)
 		{ serouthex(threeHex[iii][0]); serouthex(threeHex[iii][1]); serout(' ');
 		  if (iii==1) serout (' ');
 		}
-		serout('<'); serout(13); 
-		driveLEDs();
+		serout('<'); */ //commented out for otherwise there's not enough space for sketch (CMK)
+		serout(13);
+		driveLEDs(); // update LCD screen (CMK)
+
 	#else          // ------------------ end of block for serial-port led digits
 		serouthex(0);  // the PC version does things differently elsewhere...
 	#endif
 
-		pc = 0x1F45;    // skip subroutine part that deals with LEDs
-		return (0xEA); // return fake NOP for this first read in subroutine, it'll now go to AK
+//		pc = 0x1F45;    // skip subroutine part that deals with LEDs (used with driveLEDs above)
+//		return (0xEA); // return fake NOP for this first read in subroutine, it'll now go to AK (used with driveLEDs above)
 	}
-	if (address == 0x1EFE) // intercept AK (check for any key pressed)
+
+  if (address == 0x1EFE) // intercept AK (check for any key pressed)
 	{
+
+// future option: use scankeys here, rather than in the loop() of kimuno.ino.
+// But the problem: it will perfectly handle the software keys of the KIM-1,
+// however, the hardware switches ST RS SST are then only looked at when called from the KIM ROM,
+// so you can't reset anymore if things run outside the ROM. 
+//scanKeys();                                   // read input from physical keypad
+
 			a=getAkey();		 // 0 = no key pressed
-			//a= getKIMkey();
 			if (a==0)	a=0xFF; // that's how AK wants to see 'no key'
 			pc = 0x1F14;            // skip subroutine 
 			return (0xEA);          // return fake NOP for this first read
@@ -338,50 +315,41 @@ uint8_t read6502(uint16_t address)
 	}                              // it'll now RTS at its end
 
 	// if we're still here, it's normal reading from the highest ROM 002.
-	#ifdef AVRX
-	return(pgm_read_byte_near(rom002 + address - 0x1C00)); // ROM 002
-	#else
-	return rom002[address - 0x1C00];
-	#endif
-	}
+	return(readRom(rom002, address - 0x1C00));
+}
+ 
 
-  // ====== read into extra ROMs ======
+  // ====== read in any potential extra ROMs ======
 
-#if _INCL_DISASM
+  #if _INCL_DISASM
   // ==============================================
   // Baum/Wozniak original disasm at 2000
   // ==============================================
-	if (address < 0x21F9)              	// 0x2000-0x21F8 is disasm
-	{
-		#ifdef AVRX
-		return(pgm_read_byte_near(disasmROM + address - 0x2000));
-		#else
-		return disasmROM[address - 0x2000];
-		#endif
-	}
-#endif
-
-  // ==============================================
-  // KIM-1 expansion RAM from 2000 up to 5000 (could be more w/o Calc ROM!
-  // ==============================================
-  #if _TARGET == PERSONAL_COMPUTER
-  if (address < 0x5000) { return(RAM3[address-0x2000]);	}
+	// this now conflicts with RAM expansion in anything except Arduino Mini
+  // so disabled for now anywhere else
+  #if _TARGET == ARDUINO_MINI  
+	if (address < 0x21F9)              	// 0x2000-0x21F8 is disasm              <---------- todo: for now this is Pro Mini only!
+    return(readRom(disasmROM, address - 0x2000));
+  #endif
   #endif
 
 
+  // ==============================================
+  // KIM-1 expansion RAM from 2000 up to 5000 (could be more w/o Calc ROM!    <---------- todo: would conflict with Baum as ROM
+  // ==============================================
+  #if _TARGET != ARDUINO_MINI
+  if (address < RAM_LIMIT2) 
+    return(RAM3[address-0x2000]);
+  #endif
 
-#if _INCL_CALCULATOR
+
   // ==============================================
   // CR Bond's floating point package with support
   // ==============================================
+  #if _INCL_CALCULATOR
 	if ((address >= 0x5000) && (address <= 0x6FE3)) 	// 0x6FDF, plus 4 bytes for JSR manually added - Read to floating point library between $5000 and $6157
-	{ 
-		#ifdef AVRX
-		return(pgm_read_byte_near(calcROM + address - 0xD000)); // mchess ROM
-		#else
-		return calcROM[address - 0x5000];
-		#endif
-	}
+    return(readRom(calcROM,address - 0x5000));
+
 	// 6502 programmable calculator functions. Memory locations in the $7000 range perform
 	// special math functions, to make it easy to write programmable calculator programs.
 	if ((address>=0x7000) && (address <=0x7200))
@@ -467,24 +435,20 @@ uint8_t read6502(uint16_t address)
 	// ===================================================
 	// Microchess, with the board print routine at the end
 	// ===================================================
-	if (address >= 0xC000 && address <=0xC571)
+	if (address >= 0xC000 && address <0xC571)
 	{ 
     	if (address == 0xC202) 	// intercept $C202: Blitz mode should return 0 instead of 8
 			if (blitzMode==1)	// This is the Blitz mode hack from the microchess manual.
 			 	return((uint8_t) 0x00);
 
-		#ifdef AVRX
-		return(pgm_read_byte_near(mchessROM + address - 0xC000)); // mchess ROM
-		#else
-		return mchessROM[address - 0xC000];
-		#endif
+    return(readRom(mchessROM,address - 0xC000));
 	}
 #endif
 
 
-	// ==============================================
-	// Serial port I/O: read functions
-	// ==============================================
+	// =====================================================
+	// An extra UART for the KIM: Serial port read functions
+	// =====================================================
 	// for Microchess, VTL-02 and any others but not Apple-1
 	// $CFF3: 0 = no key pressed, 1 key pressed
 	// Data input: note that this may be a real or simulated serial port depending on setup!
@@ -501,7 +465,8 @@ uint8_t read6502(uint16_t address)
           threeHex[1][1]= RAM[0x00FA] & 0xF;
           threeHex[2][0]= (RAM[0x00F9] & 0xF0) >> 4;
           threeHex[2][1]= RAM[0x00F9] & 0xF;
-          #ifdef AVRX
+          //#ifdef AVRX
+          #if _TARGET != PERSONAL_COMPUTER
           driveLEDs();
           #endif  
 	  return(getAkey()==0?(uint8_t)0:(uint8_t)1);
@@ -512,11 +477,11 @@ uint8_t read6502(uint16_t address)
 		clearkey();
         // translate KIM-1 button codes into ASCII code expected by this version of Microchess
         switch (tempval) 
-        {	case 16:  tempval = 'P';  break;            // PC translated to P
-			case 'F':  tempval = 13;  break;    // F translated to Return
-			case '+': tempval = 'W'; break;     // + translated to W == Blitz mode toggle 
+        {	case 16:  tempval = 'P'; break;    // PC translated to P
+    			case 'F': tempval = 13;  break;    // F translated to Return
+    			case '+': tempval = 'W'; break;    // + translated to W == Blitz mode toggle 
         }             
-		if (tempval==0x57)         // 'W'. If user presses 'W', he wants to enable Blitz mode
+		if (tempval==0x57)         // 'W'. If user presses 'W', he wants to toggle Blitz mode
 		{	if (blitzMode==1) (blitzMode=0);
 			else              (blitzMode=1);
 			serout('>'); serout( (blitzMode==1)?'B':'N' );	serout('<');
@@ -552,7 +517,6 @@ uint8_t read6502(uint16_t address)
 
 	if (address == 0xD011)		//KBDCR check for keypress
 	{ 	
-	// 0xA7?
 	  return(getAkey()==0?(uint8_t)0x00:(uint8_t)0x80); // bit 7 = 1 when key pressed
 	}
 	
@@ -567,13 +531,7 @@ uint8_t read6502(uint16_t address)
   // VTL-02 at DC00
   // ==============================================
   if ((address >= 0xDC00) && (address <= 0xDFFE))   // VTL-02
-  { 
-    #ifdef AVRX
-    return(pgm_read_byte_near(vtl02ROM + address - 0xDC00)); // VTL-02 ROM
-    #else
-    return vtl02ROM[address - 0xDC00];
-    #endif
-  }
+    return(readRom(vtl02ROM,address - 0xDC00));
 #endif
 
 
@@ -582,13 +540,7 @@ uint8_t read6502(uint16_t address)
   // APPLE-1 BASIC at E0000
   // ==============================================
 	if (address >= 0xE000 && address <=0xEFFF) 	// Read from 4K Apple-1 Basic ROM
-	{ 
-		#ifdef AVRX
-		return(pgm_read_byte_near(apple1ROM + address - 0xE000));
-		#else
-		return apple1ROM[address - 0xE000];
-		#endif
-	}
+    return(readRom(apple1ROM,address - 0xE000));
 #endif
 
 
@@ -601,39 +553,30 @@ uint8_t read6502(uint16_t address)
     // INCOMPATIBILITY: multi-segment writes and loads will not work
 
     if (address==0xF170)
-        if (pc==0xF170+1)                // ========= tape save ===============
+        if (pc==0xF170+1)                       // ========= tape save ===============
         {
-//        serout('W');   
-        tapeSave(RAM002[0x17F9-0x17C0],                         //ID (not used!)
+          tapeSave(RAM002[0x17F9-0x17C0],                       //ID (not used unless atMega328!)
             read6502(0x0026), read6502(0x0027),                 //SAL,SAH 
             read6502(0x0024), read6502(0x0025),1);              //EAL,EAH
-        pc = 0xF18B;	                // skip subroutine
-	    return (0xEA);                  // return with a fake NOP instruction 
+        pc = 0xF18B;	                  // skip subroutine
+	    return (0xEA);                    // return with a fake NOP instruction 
         }
 
-    if (address==0xF18D)                // ========= tape load ===============
-        // INCOMPATIBILITY: tape is always fully loaded - not up to stated end address!
+    if (address==0xF18D)                        // ========= tape load ===============
         if (pc==0xF18D+1)
         {   
-//            serout('R');
-            if(tapeLoad(RAM002[0x17F9-0x17C0],                  //ID (not used!) 
-                read6502(0x0026), read6502(0x0027),             //SAL, SAH
-                read6502(0x0024), read6502(0x0025),1)==1)       //EAL, EAH, 1 means Apple fmt
+          if(tapeLoad(RAM002[0x17F9-0x17C0],                  //ID (not used unless atMega328!)
+              read6502(0x0026), read6502(0x0027),             //SAL, SAH
+              read6502(0x0024), read6502(0x0025),1)==1)       //EAL, EAH, 1 means Apple fmt
 
-                pc = 0xF1CB;                // normal load
-            else
-                pc = 0xF1CB;	            // load error
-		    return (0xEA);                  // return with a fake NOP instruction
+              pc = 0xF18B; // incorrect but harmless //0xF1CB; // normal load
+          else
+              pc = 0xF18B; // incorrect but harmless //0xF1CB; // load error
+		      return (0xEA);                        // return with a fake NOP instruction
         }
 
-
-
-		#ifdef AVRX
-    		return(pgm_read_byte_near(aciROM + address - 0xF100));
-		#else
-		return aciROM[address - 0xF100];
-		#endif
-	}
+    return(readRom(aciROM, address - 0xF100));  // ======== APPLE-1 ACI ROM regular read ========
+  }
 #endif
 
 
@@ -642,28 +585,24 @@ uint8_t read6502(uint16_t address)
   // APPLE-1 MINI-ASM at FBAE and WOZMON at FF00
   // ==============================================
 	if ((address >= 0xFBAE) && (address < 0xFFFB)) 	// 0xFBAE-0xFFFF is mini-assembler & wozmon
-							// but last 4 bytes are handled separately
-	{
-		#ifdef AVRX
-    		return(pgm_read_byte_near(asmROM + address - 0xFBAE));
-		#else
-		return asmROM[address - 0xFBAE];
-		#endif
-	}
+    return(readRom(asmROM, address - 0xFBAE));    // but last 4 bytes are handled separately
 #endif
 
   // ==============================================
   // 6502 reset vectors at top of memory
   // ==============================================
-	if (address >= 0xFFFA) {       // Reroute to top of KIM-1's ROM002.
-	#ifdef AVRX
-    	return(pgm_read_byte_near(rom002 + address - 0xFC00));
-	#else
-	return rom002[address - 0xFC00];
-	#endif
-	}
+  // You could make these switch between KIM-1 and Apple-1 reset vectors. Too cute for me though.
+  // As it is now, this just returns the top of the KIM-1 ROM with its reset vectors.
+  // Remember, unexpanded KIM-1's mirrored the bottom 8K 8 times, so that ROM came out here on top too.
+  //
+	if (address >= 0xFFFA)    // Reroute to top of KIM-1's ROM002.
+    return(readRom(rom002, address - 0xFC00));
 	
-	errout('%'); errout('9');
+  // funny fix this one...
+  if (address == 0x20A9)    // microchess' board print routine uses a BIT (0x2c) test/skip
+    return(0);              // it randomly reads 0x20A9; if that's not RAM, don't report the error below
+	else
+	  errout('%'); errout('9');
 	return (0);	// This should never be reached unless some addressing bug, so return 6502 BRK
 }
 
@@ -686,44 +625,64 @@ void write6502(uint16_t address, uint8_t value)
   // RAM above 1K (can be either RAM or EEPROM!)
   // size depends on platform: either 1K or more
   // ===========================================
-  #if _TARGET == PERSONAL_COMPUTER
-  if (address < 0x1000) { RAM2[address-0x0400]=value; return; }
-  #elif _TARGET == ESP32_R
-  if (address < 0x1000) { RAM2[address-0x0400]=value; return; }
-  #elif _TARGET == BLUEPILL_STM
-  if (address < 0x0800) { RAM2[address-0x0400]=value; return; }
-  #else // atMega328: Pro Mini or Uno 
-  if (address < 0x0800) {             
-    #ifdef AVRX
-    eepromwrite(address-0x0400, value);  // 0x0500-0x0900 is EEPROM for Arduino,
-    #else
-    RAM2[address-0x0400]=value;                // ...but second RAM unit for others
-	#endif
-    return;
-  }
+  #if _TARGET != ARDUINO_MINI     // then 0x0400 up to RAM_LIMIT1 is indeed RAM
+    if (address < RAM_LIMIT1)
+      { RAM2[address-0x0400]=value; return; }
+  #else                           // on the Pro Mini (atMega328) it's EEPROM,
+    if (address < RAM_LIMIT1)     // acting as EEPRAM if you want...
+      { eepromwrite(address-0x0400, value); return; }
   #endif
 
 
   // ===========================================
   // warn for writing into empty space in memmap;
-  // and for writing into RIOTs
   // ===========================================  
-  if (address < 0x1700) {                          // illegal access
-    errout('%');  errout('1');      // error code 1 - write in empty space
+//  if (address < 0x1700) {                          // illegal access
+//    errout('%');  errout('1');      // error code 1 - write in empty space
+//    return;
+//  }
+
+
+  // ===========================================
+  // RIOT I/O space, first RIOT003, then RIOT002
+  // ===========================================
+  //
+  if (address < 0x1740) {                          // ======== I/O 003 ========
+    #if _TARGET != PERSONAL_COMPUTER
+    // timer, thanks to Willem Aandewiel
+    if ((address >= 0x1704) && (address <= 0x1707)) {   // set timer
+        riotTimerWrite((address), value);                   // AaW
+        return;
+    }
+    #endif
+    // errout('%');  errout('3');      // trap code 3 - io3 access
     return;
   }
-  if (address < 0x1740) {                          // I/O 003
-    errout('%');  errout('3');      // trap code 3 - io3 access
-    return;
-  }
-  if (address < 0x1780) {                          // I/O 002
-//    errout('%');  errout('2');      // trap code 2 - io2 access
+  
+  if (address < 0x1780) {                          // ======== I/O 002 ========
+    // direct addressing of LED display, as per Jeremy Starcher:
+
+    if (address == 0x1740) {    // Set Segment 1 t/m 7      
+        riot2regs.ioPAD = value;        write1740();
+    }
+    if (address == 0x1741) {    // Set DDR for segment 1 t/m 7
+        riot2regs.ioPADD = value;        write1741();
+    }
+    if (address == 0x1742) {    // Select row0 t/m row2 and led1 t/m led6 
+        riot2regs.ioPBD = value;// & riot2regs.ioPBDD;  // <--------------- future improvement...
+        write1742();
+    }
+    if (address == 0x1743) {    // set DDR for row0 t/m row2 and led1 t/m led6
+        riot2regs.ioPBDD = value;        write1743();
+    }
+    //errout('%');  errout('2');      // trap code 2 - io2 access
     return;
   }
 
   // ===========================================
   // the 64 bytes of RAM in each RIOT chip
   // ===========================================    
+  //
   if (address < 0x17C0) {                          // RAM 003
     RAM003[address-0x1780]=value;
     return;
@@ -733,15 +692,17 @@ void write6502(uint16_t address, uint8_t value)
     return;
   }
 
-#if _TARGET == PERSONAL_COMPUTER
   // ===========================================
   // KIM-1 expansion RAM from $2000
   // ===========================================    
-  if (address < 0x5000) {                          // RAM 002
+  //
+#if _TARGET != ARDUINO_MINI
+  if (address < RAM_LIMIT2) {                         // RAM3
     RAM3[address-0x2000]=value;
     return;
   }
 #endif
+
 /*
   if ((address >=0x5000) && (address <=0x6FDF)) {                          // illegal write in fltpt65 ROM
     serout('%');  serout('a');
@@ -750,41 +711,64 @@ void write6502(uint16_t address, uint8_t value)
 */
 
   // ===========================================
-  // Serial port character out for microchess etc
-  // write to display at $CFF1
+  // Extra UART: Serial port out for microchess
+  //  (or anything else that needs it) at $CFF1
   // ===========================================
+  //
   if (address == 0xCFF1) {                          // Character out for microchess only
-	serout(value);
-	return;
+  	serout(value);
+	  return;
   }
   
   // ==============================================
   // Apple-1 keyboard and display I/O
   // write functions
   // ==============================================
+  //
   if (address == 0xD011) {                          // KBDCR
     return;
   }
   if (address == 0xD012) {                          // DSP
-	// dbgtxt(value);
-  #if _TARGET == PERSONAL_COMPUTER
-	if (value==0x8d) value=0x8a;  // to deal with ncurses on pc, should be handled elsewhere!
-  #endif
-  #if _TARGET == ESP32_R
-  if (value==0x8d) serout(0x0a); // serial terminals want both a CR and a LF...
-  #endif
-  
-	serout(value & 0x7F);				// strip bit 7
-	return;
+  	// below is misery around CR LF output; KIM and Apple do it differently, PC/ncurses and Arduino do it differently too. Jeez.
+    #if _TARGET == PERSONAL_COMPUTER                //            <------- todo: normalise PC version of 40 col back to normal version
+  	if (value==0x8d) value=0x8a;  // to deal with ncurses on pc, should be handled elsewhere!
+    serout(value & 0x7F);       // strip bit 7
+    return;
+    #endif
+
+    #if _TARGET != PERSONAL_COMPUTER
+/*    if (value==0x8d) serout(0x0a); // serial terminals want both a CR and a LF...
+    serout(value & 0x7F);       // strip bit 7
+    return;
+*/
+    value = value & 0x7F;     // strip 7th bit to get to normal ascii
+
+    if (value=='\r')
+      Apple1ColCounter=0;
+
+    if(Apple1ColCounter==40)
+    {    Apple1ColCounter=0;         serout('\r'); serout('\n');   }
+
+    if (value!=0x00)
+      serout(value & 0x7F);       // strip bit 7
+    else 
+      serout('#');
+
+    if (value=='\r')  
+      serout('\n');
+    else      
+      Apple1ColCounter++;
+    return;  
+    #endif
   }
   if (address == 0xD013) {                          // DSPCR
-	return;											// nothing to do
+  	return;											// nothing to do
   }
 
   // ==============================================
   // Warn if written anywhere else
   // ==============================================
-  errout('%');  errout('4');      // error code 4 - write to ROM
+//  errout('%');  errout('4');      // error code 4 - write to ROM
 }
 
 
@@ -814,102 +798,86 @@ void initKIM() {
 	RAM002[(0x17FE)-(0x17C0)]=0x00;
 	RAM002[(0x17FF)-(0x17C0)]=0x1C;
 
-        // the code below copies movit (a copy routine) to 0x1780 in RAM. 
-        for (i=0;i<64;i++) { //64 of 102 program bytes
-        	#ifdef AVRX
-        	RAM003[i] = pgm_read_byte_near(movitROM + i);
-        	#else
-        	RAM003[i] = movitROM[i];
-      	        #endif
-        }
+  // the code below copies movit (a copy routine) to 0x1780 in RAM. 
+  for (i=0;i<64;i++)  //64 of 102 program bytes
+  	RAM003[i] = readRom(movitROM, i);
+
 	// movit spans into the second 64 byte memory segment...
-        for (i=0;i<(95-64);i++) {                            
-		#ifdef AVRX
-	        RAM002[i] = pgm_read_byte_near(movitROM + i + 64);
-        	#else
-	        RAM002[i] = movitROM[i+64];
-        	#endif
-        }
+  for (i=0;i<(95-64);i++)                            
+    RAM002[i] = readRom( movitROM, i+64);
 
-        // the code below copies relocate to 0x0110 in RAM. i
+  // the code below copies relocate to 0x0110 in RAM. i
 	// It can be overwritten by users or by the stack pointer - it's an extra
-        for (i=0;i<149;i++) {
-        	#ifdef AVRX
-	        RAM[i+0x0110] = pgm_read_byte_near(relocateROM + i);
-	        #else
-	        RAM[i+0x0110] = relocateROM[i];
-	        #endif
-        }
+  for (i=0;i<149;i++) 
+    RAM[i+0x0110] = readRom(relocateROM, i);
 
-        // the code below copies branch to 0x01A5 in RAM. 
+  // the code below copies branch to 0x01A5 in RAM. 
 	// It can be overwritten by users - it's an extra
-        // the program can easily be overwritten by the stack, because it ends at 1CF. 
+  // the program can easily be overwritten by the stack, because it ends at 1CF. 
 	// Still, the monitor brings the stack down to no worse than 0x1FF-8.
-        for (i=0;i<42;i++) {
-        	#ifdef AVRX
-                RAM[i+0x01A5] = pgm_read_byte_near(branchROM + i);
-        	#else
-                RAM[i+0x01A5] = branchROM[i];
-        	#endif
-        }
+  for (i=0;i<42;i++) 
+          RAM[i+0x01A5] = readRom(branchROM, i);
+
 	// setting these two values facilitates the first program in the 1st Book of KIM.
 	RAM[0x0010] = 0x10;
 	RAM[0x0011] = 0x11;
-        
-#if _TARGET == PERSONAL_COMPUTER
-        // the code below copies life to $2000 
-        for (i=0;i<440;i++) { //64 of 102 program bytes
-        	#ifdef AVRX
-        	RAM3[i] = pgm_read_byte_near(lifeROM + i);
-        	#else
-        	RAM3[i] = lifeROM[i];
-      	        #endif
-        }
-#endif
 
+  // the code below copies Apple-1 life to $2000 
+  #if _TARGET != ARDUINO_MINI
+  for (i=0;i<440;i++)  //64 of 102 program bytes
+  	RAM3[i] = readRom(lifeROM, i);
+  #endif
 }
 
 void loadTestProgram() {  // Call this from main() if you want a program preloaded. It's the first program from First Book of KIM...
         uint8_t i;
-        
-#if _DEMO_FIRST
-        for (i=0;i<9;i++) {
-        	#ifdef AVRX
-                RAM[i+0x0200] = pgm_read_byte_near(fbkDemo + i);
-        	#else
-          	RAM[i+0x0200]=fbkDemo[i];
-		#endif
-	}
-  #if _INCL_CALCULATOR
-	// load fltpt65 demo program
-        for (i=0x0;i<31;i++) {
-        	#ifdef AVRX
-                RAM[i+0x0210] = pgm_read_byte_near(fltptDemo + i);
-        	#else
-          	RAM[i+0x0210]=fltptDemo[i];
-		#endif
-	}
+
+  // Fill RAM with fun software...
+  
+  // Demo First is the first program from the First Book of KIM. A silly but simple demo. 
+  // it can be overwritten if below you load a particularly big other demo program, that's OK.
+  #if _DEMO_FIRST
+  for (i=0;i<9;i++) 
+    	RAM[i+0x0200]=readRom(fbkDemo,i);
   #endif
-#endif
+  
+  // The little demo program to show off the 6502 programmable calculator feature.
+  // it can be overwritten if below you load a particularly big other demo program, that's OK.
+  #if _INCL_CALCULATOR
+  for (i=0x0;i<31;i++) 
+    	RAM[i+0x0210]=readRom(fltptDemo, i);
+  #endif
+
+// the others below are games from First Book of KIM. Mostly here to test the existing
+// incompatibilities for a future version. 'DIRECT RIOT ADDRESSING GAMES MOSTLY DO NOT WORK'
+// BTW - incompatibilities have to do with our emulation from keypad out of ROM, rather
+// than from inside the RIOT hardware that the ROM uses. We do so for a reason:
+// we want the Reset key to work at all times. But obviously, we need a better plan...
+//
 
 #if _DEMO_TIMER
-        for (i=0;i<100;i++) {
-        	#ifdef AVRX
-                RAM[i+0x0200] = pgm_read_byte_near(timerDemo + i);
-        	#else
-          	RAM[i+0x0200]=timerDemo[i];
-		#endif
-	}
+  for (uint16_t ii=0;ii<100;ii++) 
+    	RAM[ii+0x0200]=readRom(timerDemo, ii);
 #endif
 
-#if _DEMO_HILO_
-        for (i=0;i<110;i++) {
-        	#ifdef AVRX
-                RAM[i+0x0200] = pgm_read_byte_near(hiLoDemo + i);
-        	#else
-          	RAM[i+0x0200]=hiLoDemo[i];
-		#endif
-	}
+#if _DEMO_HILO
+  for (uint16_t ii=0;ii<110;ii++) 
+    	RAM[ii+0x0200]=readRom(hiLoDemo, ii);
+#endif
+
+#if _INCL_FARMERBROWN
+  for (uint16_t ii=0;ii<206;ii++) 
+      RAM[ii+0x0200]=readRom(farmerROM, ii);
+#endif
+
+#if _DEMO_ASTEROID
+  for (uint16_t ii=0;ii<262;ii++) 
+      RAM[ii+0x0200]=readRom(asteroidDemo, ii);
+#endif
+
+#if _DEMO_BLACKJACK
+  for (uint16_t ii=0;ii<491;ii++) 
+      RAM[ii+0x0200]=readRom(blackjackDemo, ii);
 #endif
 }
 
