@@ -458,7 +458,7 @@ char getch() {
     shield_input = analogRead (0);
     if (shield_input < 60) { delay(300); return 21; }                // [DA] button right
     else if (shield_input < 200) { delay(300); return 20;}           // [+]  button up
-    else if (shield_input < 400) { delay(300); return 18;}           // [PC] button down
+    else if (shield_input < 400) { delay(300); return  1;}           // [ST] button down
     else if (shield_input < 600) { delay(300); return 22;}           // [AD] button left
     else if (shield_input < 800) { delay(300); return 19;}           // [GO] button select
   }

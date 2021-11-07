@@ -275,12 +275,12 @@ uint8_t read6502(uint16_t address)
                         
 	//#ifdef AVRX      // remove this block to get led digits on serial for AVR too
   #if _TARGET != PERSONAL_COMPUTER
-		/*serout(13); serout('>');
+		serout(13); serout('>');
 		for (iii=0;iii<3;iii++)
 		{ serouthex(threeHex[iii][0]); serouthex(threeHex[iii][1]); serout(' ');
 		  if (iii==1) serout (' ');
 		}
-		serout('<'); */ //commented out for otherwise there's not enough space for sketch (CMK)
+		serout('<');
 		serout(13);
 		driveLEDs(); // update LCD screen (CMK)
 

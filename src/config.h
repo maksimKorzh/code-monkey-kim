@@ -27,7 +27,7 @@
 //-------------------------------------------------------------
 #define _INCL_DISASM      TRUE
 #define _INCL_MINIASM     TRUE
-#define _INCL_MCHESS      TRUE
+#define _INCL_MCHESS      FALSE
 #define _INCL_CALCULATOR  FALSE
 #define _INCL_VTL02       TRUE
 #define _INCL_A1BASIC     TRUE
