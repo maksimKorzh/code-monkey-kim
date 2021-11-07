@@ -1,5 +1,5 @@
 # Code Monkey KIM
-This is a fork of KIM UNO project by Oscar Vermeulen,<br>
+This is a fork of KIM UNO project by Oscar Vermeulen<br>
 with a custom hardware and expanded output capabilities.
 
 # Video demo and tutorials
