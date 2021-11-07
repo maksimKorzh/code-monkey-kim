@@ -502,7 +502,7 @@ extern "C" void eepromwrite(uint16_t eepromaddress, uint8_t bytevalue)
   if (eepromProtect==0)
     EEPROM.write(eepromaddress, bytevalue);
   else
-    {}//SerialX.println(F("EEPROM WRITE-PROTECT, USE '>'"));
+    SerialX.println(F("EEPROM WRITE-PROTECT, USE '>'"));
 }
 
 /*
@@ -975,14 +975,14 @@ void    tapeDirectory(void)
 
     // handle unformatted file system ---------------------------------------------------------
     if(!SPIFFS.begin(false))
-    { /*seroutstr("SPIFFS Mount Failed, retry after formatting?\r\n"*/);
+    { seroutstr("SPIFFS Mount Failed, retry after formatting?\r\n");
 
       userInput();
       
       if (curkey='y' || curkey == 'Y')     
       { curkey=0; 
         if(!SPIFFS.begin(true))
-        { /*seroutstr("SPIFFS Mount Failed after formatting attempt. Aborting tape operation.");*/
+        { seroutstr("SPIFFS Mount Failed after formatting attempt. Aborting tape operation.");
           return;
         }
       } else
@@ -1029,7 +1029,7 @@ void    tapeInit(void)
   SPIFFS.format();
   seroutstr("Done.\r\n");
 }
-/* 
+
 // tapeSetCounter was intended to let you enter a tape counter number. We just use the KIM's $17f9 ID instead
 //
 void    tapeSetCounter(void)
@@ -1063,7 +1063,7 @@ void    tapeSetCounter(void)
     // ...
   } while (AppleTapeCounter<1 || AppleTapeCounter>255);
 }
-*/
+
 void    helpscreen(void)
 {
   seroutstr("helpscreen\r\nHit any key");
