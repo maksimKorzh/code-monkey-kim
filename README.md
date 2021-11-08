@@ -9,7 +9,7 @@ with a custom hardware and expanded output capabilities.
 https://obsolescence.wixsite.com/obsolescence/kim-uno-summary-c1uuh<br>
 
 # Ultimate KIM-1 / 6502 CPU guides
-    http://users.telenet.be/kim1-6502/ 
+http://users.telenet.be/kim1-6502/ 
 
 # System utilities
     ----------------------------------------------------------------------------------
