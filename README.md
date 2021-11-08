@@ -68,7 +68,7 @@ https://obsolescence.wixsite.com/obsolescence/kim-uno-summary-c1uuh<br>
     hit 26 (from 0226); 20 (from 0220) and the right offset, F8 shows up on the the display.
 
     ----------------------------------------------------------------------------------
-    0x2000 DISASSEMBLER - lists your program to serial port
+    0x2000 DISASM - lists your program to serial port
     ----------------------------------------------------------------------------------
     Store the address from which you want to start disassembling in $00 (high byte, ie 02) and $01
     (low byte, ie 00). Obviously, given that this outputs text, you will need the serial terminal
@@ -85,12 +85,6 @@ https://obsolescence.wixsite.com/obsolescence/kim-uno-summary-c1uuh<br>
     ----------------------------------------------------------------------------------
     See Apple 1 user manual:
     https://archive.computerhistory.org/resources/text/Apple/Apple.AppleI.1976.102646518.pdf
-
-    ----------------------------------------------------------------------------------
-    0xE000 A1BASIC (assumes TTY mode) - Apple 1 BASIC interpreter
-    ----------------------------------------------------------------------------------
-    See Apple 1 BASIC user manual:
-    https://archive.org/details/apple1_basic_manual/mode/2up?view=theater
 
 # Controlling LCD display
     ----------------------------------------------------------------------------------
@@ -216,14 +210,9 @@ https://obsolescence.wixsite.com/obsolescence/kim-uno-summary-c1uuh<br>
  - LCD shield Reset   is KIM-1 [RS]
 
 # Limitations
- - No SST switch
+ - No SST switch in non TTY mode
  - No PC button
  - No 'long press' buttons to flip the modes (like in KIM UNO)
- - In a non TTY serial mode 6 digits are no longer displayed
-
-# TODO
- - user defined characters support for LCD dispay
- - expand I/O to print to LCD display
 
 # Circuit
 Please see <a href="https://github.com/maksimKorzh/cmk-computer">CMK computer</a> project for details
