@@ -29,9 +29,9 @@
 #define _INCL_MINIASM     TRUE
 #define _INCL_MCHESS      FALSE
 #define _INCL_CALCULATOR  FALSE
-#define _INCL_VTL02       TRUE
-#define _INCL_A1BASIC     TRUE
-#define _INCL_ACI         TRUE
+#define _INCL_VTL02       FALSE
+#define _INCL_A1BASIC     FALSE
+#define _INCL_ACI         FALSE
 #define _INCL_LIFE        FALSE
 
 

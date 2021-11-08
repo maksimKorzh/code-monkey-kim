@@ -25,7 +25,15 @@
  void clearkey(void);       // forget any not-yet-read keypresses
 // -------- using the keypad on an Arduino KIM Uno PCB
  void driveLEDs();          // only used for Microchess by now (2020)
- extern void scanKeys();    // for reading Arduino's KIM Uno keypad
+ uint8_t getmode();         // to prevent Apple 1 programs output to LCD screen (CMK)
+ void lcdout(char value);                        // print serial output to LCD (CMK)
+ void lcdclear();                                // clear LCD display (CMK)
+ void lcdpos(int col, int row);                  // set up LCD cursor position
+ void lcdblink(uint8_t value);                   // toggle LCD cursor blink
+ void lcdudg(uint8_t index, uint8_t sprite);     // create user defined character for LCD
+ void lcdscrollleft();                           // scroll LCD display left
+ void lcdscrollright();                          // scroll LCD display right
+ extern void scanKeys();                         // for reading Arduino's KIM Uno keypad
 
 
 // -------- new RIOT emulation 20200809

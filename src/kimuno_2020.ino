@@ -380,9 +380,9 @@ void setupUno() {
   // init LCD
   lcd.begin(16, 2);
   lcd.noAutoscroll();
-  //lcd.cursor();
-  lcd.print("Code Monkey KIM!");
-  lcd.setCursor(0, 1);
+  lcd.setCursor(10, 1);
+  lcd.print(" [AD] ");
+
 }
 
 
@@ -391,15 +391,28 @@ void setupUno() {
 //
 extern "C" {
 void driveLEDs() {  // now actually drives LCD instead (CMK)
-  lcd.setCursor(0, 1);
+  lcd.setCursor(0, 0);
+  lcd.print(" ADDR DATA MODE ");
+  
+  lcd.setCursor(0, 1); lcd.print(' ');
   for (int iii=0;iii<3;iii++)
   { lcd.print(threeHex[iii][0], HEX); lcd.print(threeHex[iii][1], HEX);
-    if (iii==1) lcd.print (' ');
+    if (iii==1) lcd.print (" [");
   }
   
-  //lcd.print("driveLEDs");
-  //lcd.setCursor(0, 1);
+  lcd.print(']');
 }
+
+uint8_t getmode() { return useKeyboardLed; };
+void lcdout(char value) { lcd.print(char(value)); }
+void lcdclear() { lcd.clear(); }
+void lcdpos(int col, int row) { lcd.setCursor(col, row); }
+void lcdblink(uint8_t value) { value ? lcd.blink() : lcd.noBlink(); }
+void lcdudg(uint8_t index, uint8_t sprite) { lcd.createChar(index, RAM + sprite); lcd.begin(16, 2); }
+void lcdscrollleft() { lcd.scrollDisplayLeft(); }
+void lcdscrollright() { lcd.scrollDisplayRight(); }
+
+
 void write1740(void) {}  // not used (CMK)
 void write1741(void) {}  // not used (CMK)
 void write1742(void) {}  // not used (CMK)
@@ -456,11 +469,33 @@ char getch() {
     // use LCD Shield buttons as KIM-1 command keys
     int shield_input;
     shield_input = analogRead (0);
-    if (shield_input < 60) { delay(300); return 21; }                // [DA] button right
+    if (shield_input < 60) {                                         // [DA] button right
+      delay(300);
+      lcd.setCursor(10, 1);
+      lcd.print(" [DA] ");
+      return 21;
+    }
     else if (shield_input < 200) { delay(300); return 20;}           // [+]  button up
-    else if (shield_input < 400) { delay(300); return  1;}           // [ST] button down
-    else if (shield_input < 600) { delay(300); return 22;}           // [AD] button left
-    else if (shield_input < 800) { delay(300); return 19;}           // [GO] button select
+    else if (shield_input < 400) {                                   // [ST] button down
+      lcd.setCursor(10, 1);
+      lcd.print(" [ST] ");
+      delay(300);
+      return  1;
+    }
+    
+    else if (shield_input < 600) {                                   // [AD] button left
+      lcd.setCursor(10, 1);
+      lcd.print(" [AD] ");
+      delay(300);
+      return 22;
+    }
+    
+    else if (shield_input < 800) {                                   // [GO] button select
+      lcd.setCursor(10, 1);
+      lcd.print(" [GO] ");
+      delay(300);
+      return 19;
+    }
   }
 
   return key;

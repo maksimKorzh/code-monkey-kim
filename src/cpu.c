@@ -741,7 +741,10 @@ void write6502(uint16_t address, uint8_t value)
     serout(value & 0x7F);       // strip bit 7
     return;
 */
-    value = value & 0x7F;     // strip 7th bit to get to normal ascii
+    value = value & 0x7F;       // strip 7th bit to get to normal ascii
+
+    if (getmode())
+      lcdout(value);            // output char on LCD screen (CMK)
 
     if (value=='\r')
       Apple1ColCounter=0;
@@ -763,6 +766,37 @@ void write6502(uint16_t address, uint8_t value)
   }
   if (address == 0xD013) {                          // DSPCR
   	return;											// nothing to do
+  }
+  
+  // clear LCD screen (CMK)
+  if (address == 0xD014) {
+    lcdclear();
+    return;
+  }
+  
+  // toggle LCD cursor blink
+  if (address == 0xD015) {
+    lcdblink(value);
+    return;
+  }
+  
+  // set LCD cursor position
+  if (address == 0xD016) {
+    lcdpos(x, y);               // set LCD cursor at X, Y register's values (CMK)
+    return;
+  }
+  
+  // create user defined graphics
+  if (address == 0xD017) {
+    lcdudg(x, y);
+    return;
+  }
+  
+  // scroll LCD display
+  if (address == 0xD018) {
+    if (value) lcdscrollleft();
+    else lcdscrollright();
+    return;
   }
 
   // ==============================================
