@@ -110,7 +110,7 @@ http://users.telenet.be/kim1-6502/
     0xD015  Show/hide LCD blinking cursor
     ----------------------------------------------------------------------------------
     A9 00       LDS #$01   ; load 0x00 to A register (use 0x00 to hide cursor)
-    8D 14 D0    STA $D015  ; set 0x00 to 0xD014 to enable blinking cursor
+    8D 15 D0    STA $D015  ; set 0x00 to 0xD014 to enable blinking cursor
 
     ----------------------------------------------------------------------------------
     0xD016  Set cursor at position (register X = col, register Y = row)
