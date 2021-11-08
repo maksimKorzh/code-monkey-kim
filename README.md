@@ -11,6 +11,14 @@ https://obsolescence.wixsite.com/obsolescence/kim-uno-summary-c1uuh<br>
 # Ultimate KIM-1 / 6502 CPU guides
 http://users.telenet.be/kim1-6502/ 
 
+# KIM UNO commands in non TTY serial mode
+    AD - Ctrl A     ST - Ctrl T     SST on - ]
+    DA - Ctrl D     RS - Ctrl R     SST off- [
+    PC - Ctrl P     GO - Ctrl G
+    
+    Since there's no SST switch and PC button on my custom hardware
+    these keyboard shortcuts might be very useful!
+
 # System utilities
     ----------------------------------------------------------------------------------
     0x1780 MOVIT - moves bytes from one memory location to another, including EEPROM
