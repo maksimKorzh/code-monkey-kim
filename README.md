@@ -193,6 +193,11 @@ http://users.telenet.be/kim1-6502/
     A utility, kimpaper, exists to convert between binary
     files and the KIM’s ‘paper tape format’.
 
+# A MOS Technology 6510 Cross-Assembler and Disassembler: win2c64/lin2c64/mac2c64
+    Tremendous tool by Aart Bik allowing to convert 6502 assembly to KIM-1
+    paper tape format, see: http://www.aartbik.com/MISC/c64.html
+    for more details. Downloads for windows/linux/macos are available in this repo.
+
 # Hardware changes
  - 7-segment LEDs are replaced by 16x2 LCD shield
  - custom 4x4 keypad
