@@ -98,6 +98,7 @@ http://users.telenet.be/kim1-6502/
     __________________________________________________________________________
     |         |                |       |                                     |
     | ADDRESS |      AREA      | LABEL |              FUNCTION               |
+    |_________|________________|_______|_____________________________________|
     |         |                |       |                                     |
     |  00EF   |                | PCL   | Program Counter - Low Order Byte    |
     |  00F0   |                | PGH   | Program Counter - High Order Byte   |
@@ -107,19 +108,23 @@ http://users.telenet.be/kim1-6502/
     |  00F3   |     Buffer     | A     | Accumulator                         |
     |  00F4   |                | Y     | Y-Index Register                    |
     |  00F5   |                | X     | X-Index Register                    |
+    |_________|________________|_______|_____________________________________|
     |  1700   |                | PAD   | 6530-003 A Data Register            |
     |  1701   |   Application  | PADD  | 6530-003 A Data Direction Register  |
     |  1702   |        I/O     | PBD   | 6530-003 B Data Register            |
     |  1703   |                | PBDD  | 6530-003 B Data Direction Register  |
+    |_________|________________|_______|_____________________________________|
     |  1704   |                |       | 6530-003 Interval Timer             |
     |         | Interval Timer |       |   (See Section 1.6 of               |
     |         |                |       |    Hardware Manual)                 |
     |  170F   |                |       |                                     |
+    |_________|________________|_______|_____________________________________|
     |  17F5   |                | SAL   | Starting Address - Low Order Byte   |
     |  17F6   |   Audio Tape   | SAH   | Starting Address - High Order Byte  |
     |  17F7   |   Load & Dump  | EAL   | Ending Address - Low Order Byte     |
     |  17F8   |                | EAH   | Ending Address - High Order Byte    |
     |  17F9   |                | ID    | File Identification Number          |
+    |_________|________________|_______|_____________________________________|
     |  l7FA   |                | NMIL  | NMI Vector - Low Order Byte         |
     |  l7FB   |                | NMIH  | NMI Vector - High Order Byte        |
     |  l7FC   |   Interrupt    | RSTL  | RST Vector - Low Order Byte         |
@@ -127,12 +132,15 @@ http://users.telenet.be/kim1-6502/
     |  17FD   |                | RSTH  | RST Vector - High Order Byte        |
     |  l7FE   |                | IRQL  | IRQ Vector - Low Order Byte         |
     |  17FF   |                | IRQH  | IRQ Vector - High Order Byte        |
+    |_________|________________|_______|_____________________________________|
     |  1800   |                | DUMPT | Start Address - Audio Tape Dump     |
     |         |  Audio Tape    |       |                                     |
     |  1873   |                | LOADT | Start Address - Audio Tape Load     |
+    |_________|________________|_______|_____________________________________|
     |  1C00   | STOP Key + SST |       | Start Address for NMI using KIM     |
     |         |                |       | "Save Nachine" Routine (Load in     |
     |         |                |       | 17FA & 17FB)                        |
+    |_________|________________|_______|_____________________________________|
     |  17F7   |   Paper Tape   | EAL   | Ending Address - Low Order Byte     |
     |  17F8   |    Dump (Q)    | EAH   | Ending Address - High Order Byte    |
     |_________|________________|_______|_____________________________________|
@@ -238,7 +246,10 @@ http://users.telenet.be/kim1-6502/
     You may need to lower the speed at which the PC
     is sending bytes, HyperTerminal has a setting for that.
     
-    On linux use: plink YOUR_PUTTY_SESSION_NAME < your_paper_tape.txt
+    On linux I use my own custom utility "send.py" which mimics
+    key presses while being in putty session. I know this is weird
+    but plink drops data and I don't know what else to use
+    to slow down sending characters without decreasing baud rate.
     
     A utility, kimpaper, exists to convert between binary
     files and the KIM’s ‘paper tape format’.

@@ -12,6 +12,6 @@ print_char   lda hello,X
              jmp print_char
 exit         jmp exit
 
-hello       .byte "  Hello, World!"
+hello       .byte "Hello, World!"
             .byte $00
 
