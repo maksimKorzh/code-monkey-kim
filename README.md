@@ -3,7 +3,7 @@ This is a fork of KIM UNO project by Oscar Vermeulen<br>
 with a custom hardware and expanded output capabilities.
 
 # Video demo and tutorials
-[![IMAGE ALT TEXT HERE](https://img.youtube.com/vi/EQc5zbSJ_vo/0.jpg)](https://www.youtube.com/watch?v=EQc5zbSJ_vo&list=PLLfIBXQeu3abUqy2XK2NiMkrRzH2722ht)
+[![IMAGE ALT TEXT HERE](https://img.youtube.com/vi/He10QyMgApI/0.jpg)](https://www.youtube.com/watch?v=EQc5zbSJ_vo&list=PLLfIBXQeu3abUqy2XK2NiMkrRzH2722ht)
 
 # Original project by Oscar Vermeulen
 https://obsolescence.wixsite.com/obsolescence/kim-uno-summary-c1uuh<br>
