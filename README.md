@@ -94,6 +94,13 @@ http://users.telenet.be/kim1-6502/
     See Apple 1 user manual:
     https://archive.computerhistory.org/resources/text/Apple/Apple.AppleI.1976.102646518.pdf
 
+# Print to serial port
+    ----------------------------------------------------------------------------------
+    0x1EA0  Print character to serial port
+    ----------------------------------------------------------------------------------
+    A9 61       LDA #$61   ; load 'a' to A register
+    4C A0 1E    JSR $1EA0  ; output character
+
 # Controlling LCD display
     ----------------------------------------------------------------------------------
     0xD012  Echo character to LCD
@@ -188,7 +195,7 @@ http://users.telenet.be/kim1-6502/
     You may need to lower the speed at which the PC
     is sending bytes, HyperTerminal has a setting for that.
     
-    On linux use plink YOUR_PUTTY_SESSION_NAME < your_paper_tape.txt
+    On linux use: plink YOUR_PUTTY_SESSION_NAME < your_paper_tape.txt
     
     A utility, kimpaper, exists to convert between binary
     files and the KIM’s ‘paper tape format’.
