@@ -173,7 +173,7 @@ http://users.telenet.be/kim1-6502/
 
 # Loading and saving programs to your PC
     In serial mode (ie, Option 2, press [TAB] to go there), saving goes as follows:
-    store the end address in 0x17F7 (upper byte, i.e. 02) and 0x17F8 (lower byte, i.e. FF).
+    store the end address in 0x17F7 (lower byte, i.e. FF) and 0x17F8 (upper byte, i.e. 02).
     Now go to the address that is the starting address (0200 most likely).
     
     Press Q and a data file will be sent to the terminal.
@@ -182,9 +182,14 @@ http://users.telenet.be/kim1-6502/
     
     The command L allows you to upload a file into the KIM-1.
     Just press L, the KIM will wait for paper tape data so let your terminal program send the
-    file. In Windows' HyperTerminal: Transfer->Send Text File.
+    file.
+    
+    In Windows' HyperTerminal: Transfer->Send Text File.
     You may need to lower the speed at which the PC
     is sending bytes, HyperTerminal has a setting for that.
+    
+    On linux use plink YOUR_PUTTY_SESSION_NAME < your_paper_tape.txt
+    
     A utility, kimpaper, exists to convert between binary
     files and the KIM’s ‘paper tape format’.
 
