@@ -580,32 +580,7 @@ void oledRefresh(int newOledMode)
 // =========================================================================================
 
 
-void driveCalcLEDs(uint8_t *numberStr, uint8_t decpt)
-{ 
-  /*uint8_t led, col, ledNo, currentBit, bitOn;
-  uint8_t digit,i;
-    
-  // 1. initialse for driving the 6 segment LEDs
-  for (led=0;led<7;led++)
-  { pinMode(ledSelect7[led], OUTPUT);  // set led pins to output
-    digitalWrite(ledSelect7[led], LOW); // LOW = not lit
-  }
-  // 2. switch column pins to output mode
-  for (digit=0;digit<7;digit++)
-  {  for (col=0;col<8;col++)  
-    {  pinMode(aCols[col], OUTPUT);           // set pin to output
-       currentBit = (1<<(7-col));             // isolate the current bit in loop
-       bitOn = (currentBit&dig[numberStr[digit]-48])==0;  
-       if (col==0 && digit==decpt) // show decimal point here?
-         bitOn=0; // 0 being light led.
-       digitalWrite(aCols[col], bitOn);       // set the bit
-    }
-    digitalWrite(ledSelect7[digit], HIGH); // Light this LED 
-    delay(2);
-    digitalWrite(ledSelect7[digit], LOW); // unLight this LED
-  }*/
-} // end of function
-
+void driveCalcLEDs(uint8_t *numberStr, uint8_t decpt) {}  // not used (CMK)
 
 extern "C" {  // the extern C is to make function accessible from within cpu.c
 uint8_t enterflt(uint8_t reg)   // result code -1 = cancel, 0 = good
