@@ -150,7 +150,7 @@ http://users.telenet.be/kim1-6502/
     0x1EA0  Print character to serial port
     ----------------------------------------------------------------------------------
     A9 61       LDA #$61   ; load 'a' to A register
-    20 A0 1E    JSR $1EA0  ; output character
+    20 A0 1E    JSR $1EA0  ; output character 
 
 # Controlling LCD display
     ----------------------------------------------------------------------------------
