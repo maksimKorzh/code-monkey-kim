@@ -94,6 +94,16 @@ http://users.telenet.be/kim1-6502/
     See Apple 1 user manual:
     https://archive.computerhistory.org/resources/text/Apple/Apple.AppleI.1976.102646518.pdf
 
+# KIM-1 subroutines addresses
+    0x1EFE - Check for jey depressed
+    0x1F6A - Get key from Keyboard
+    0x1F1F - Display F9, FA, FB
+    0x1E5A - Put char from TTY to A register
+    0x1E3B - Print A register as 2 hex chars
+    0x1E1E - Print contents of FB and FA on TTY
+    0x1EA0 - Print ASCII char in A register to TTY
+    0x1E9E - Print a space
+
 # KIM-1 special memory addresses
     __________________________________________________________________________
     |         |                |       |                                     |
