@@ -95,7 +95,7 @@ http://users.telenet.be/kim1-6502/
     https://archive.computerhistory.org/resources/text/Apple/Apple.AppleI.1976.102646518.pdf
 
 # KIM-1 subroutines
-    0x1EFE - Check for jey depressed
+    0x1EFE - Check for key depressed
     0x1F6A - Get key from Keyboard
     0x1F1F - Display F9, FA, FB
     0x1E5A - Put char from TTY to A register

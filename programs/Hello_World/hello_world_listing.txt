@@ -1,0 +1,12 @@
+HELLO
+0000  48 65 6C 6C 6F 2C 20 77 6F 72 6C 64 21 00
+--------------------------------------------------------
+0200  8D 14 D0   START   STA $D014    ; clear screen
+0203  A2 00              LDX #$00     ; reset counter
+0205  B5 00      PRINT   LDA HELLO,X  ; load next char
+0207  F0 07              BEQ ESCAPE   ; no more chars
+0209  8D 12 D0           STA $D012    ; print char
+020C  E8                 INX          ; increment counter
+020D  4C 05 02           JMP PRINT    ; print next char
+0210  4C 10 02   ESCAPE  JMP ESCAPE   ; loop forever
+
